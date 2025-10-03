@@ -187,51 +187,37 @@ async def preview_and_publish(update: Update, context: ContextTypes.DEFAULT_TYPE
     final_text = "\n".join(final_parts)
 
     try:
-        if file:
-            if hasattr(file, 'file_id'):
+        if file is None:
+            # فقط متن
+            await context.bot.send_message(chat_id=CHANNEL_ID, text=final_text, parse_mode="HTML")
+        else:
+            # تشخیص نوع فایل
+            if hasattr(file, 'file_unique_id') and not hasattr(file, 'file_name'):
+                # این یک عکس است (PhotoSize)
+                await context.bot.send_photo(
+                    chat_id=CHANNEL_ID,
+                    photo=file.file_id,
+                    caption=final_text,
+                    parse_mode="HTML"
+                )
+            else:
+                # این یک سند (document, video, audio, etc.) است
                 if file.file_size > 50 * 1024 * 1024:
                     await update.message.reply_text("⚠️ فایل شما بیش از 50 مگابایت است و نمی‌توانم آن را فوروارد کنم.")
                     return ConversationHandler.END
 
-                if update.message.document or (file.file_id and '.' in getattr(file, 'file_name', '')):
-                    await context.bot.send_document(
-                        chat_id=CHANNEL_ID,
-                        document=file.file_id,
-                        caption=final_text,
-                        parse_mode="HTML"
-                    )
-                elif update.message.photo:
-                    await context.bot.send_photo(
-                        chat_id=CHANNEL_ID,
-                        photo=file.file_id,
-                        caption=final_text,
-                        parse_mode="HTML"
-                    )
-                elif update.message.video:
-                    await context.bot.send_video(
-                        chat_id=CHANNEL_ID,
-                        video=file.file_id,
-                        caption=final_text,
-                        parse_mode="HTML"
-                    )
-                else:
-                    await context.bot.send_document(
-                        chat_id=CHANNEL_ID,
-                        document=file.file_id,
-                        caption=final_text,
-                        parse_mode="HTML"
-                    )
-            else:
-                await context.bot.send_message(chat_id=CHANNEL_ID, text=final_text, parse_mode="HTML")
-        else:
-            await context.bot.send_message(chat_id=CHANNEL_ID, text=final_text, parse_mode="HTML")
+                await context.bot.send_document(
+                    chat_id=CHANNEL_ID,
+                    document=file.file_id,
+                    caption=final_text,
+                    parse_mode="HTML"
+                )
 
         await update.message.reply_text("✅ پست با موفقیت در کانال منتشر شد!")
     except Exception as e:
         await update.message.reply_text(f"❌ خطا در انتشار: {str(e)}")
 
     return ConversationHandler.END
-
 # --- لغو ---
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_user(update, context):

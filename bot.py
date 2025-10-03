@@ -12,7 +12,7 @@ from telegram.ext import (
     ConversationHandler,
 )
 
-# --- تنظیمات از محیط (برای Railway) ---
+# --- تنظیمات از متغیرهای محیطی (برای Railway و سرورها) ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 YOUR_USER_ID = int(os.getenv("YOUR_USER_ID"))
@@ -24,11 +24,12 @@ YOUR_USER_ID = int(os.getenv("YOUR_USER_ID"))
     WAITING_FOR_PROMPT,
 ) = range(3)
 
+# --- لاگ ---
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 
-# --- فیلتر دسترسی فقط برای تو ---
+# --- فیلتر دسترسی فقط برای شما ---
 async def check_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != YOUR_USER_ID:

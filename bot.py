@@ -13,9 +13,9 @@ from telegram.ext import (
 )
 
 # --- تنظیمات از محیط (برای Railway) ---
-BOT_TOKEN = os.getenv("8257090148:AAHmnbk1CVRD5sFVJpfC1dR-lrcuwqvBsZM")
-CHANNEL_ID = int(os.getenv("-1003097152638"))
-YOUR_USER_ID = int(os.getenv("7705155620"))
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
+YOUR_USER_ID = int(os.getenv("YOUR_USER_ID"))
 
 # --- وضعیت‌ها ---
 (

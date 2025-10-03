@@ -12,7 +12,7 @@ from telegram.ext import (
     ConversationHandler,
 )
 
-# --- تنظیمات از متغیرهای محیطی (برای Railway و سرورها) ---
+# --- تنظیمات ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 YOUR_USER_ID = int(os.getenv("YOUR_USER_ID"))
@@ -24,12 +24,11 @@ YOUR_USER_ID = int(os.getenv("YOUR_USER_ID"))
     WAITING_FOR_PROMPT,
 ) = range(3)
 
-# --- لاگ ---
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 
-# --- فیلتر دسترسی فقط برای شما ---
+# --- بررسی دسترسی ---
 async def check_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != YOUR_USER_ID:
@@ -37,23 +36,35 @@ async def check_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return False
     return True
 
-# --- شروع ---
+# --- منوی اصلی ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_user(update, context):
         return ConversationHandler.END
 
     keyboard = [
-        [InlineKeyboardButton("📤 دریافت فایل محتوا", callback_data="start_upload")]
+        [InlineKeyboardButton("📤 ارسال پیام با پرامپت", callback_data="start_upload")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "سلام! من ربات فرمت‌دهنده کانال هوش مصنوعی هستم.\n\n"
-        "برای شروع، دکمه زیر را بزنید:",
+        "فعالیت مورد نظر را انتخاب کنید:",
         reply_markup=reply_markup,
     )
     return WAITING_FOR_FILE
 
-# --- مرحله 1: تصمیم درباره فایل ---
+# --- دکمه تلاش مجدد ---
+def get_retry_button():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 تلاش مجدد", callback_data="retry")]
+    ])
+
+# --- مدیریت تلاش مجدد ---
+async def handle_retry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await start(update, context)
+    return WAITING_FOR_FILE
+
+# --- مرحله 1: فایل یا بدون فایل ---
 async def handle_file_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -74,8 +85,11 @@ async def handle_file_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup,
         )
         return WAITING_FOR_FILE
+    elif query.data == "retry":
+        await start(update, context)
+        return WAITING_FOR_FILE
 
-# --- تصمیم کاربر درباره فایل ---
+# --- تصمیم درباره فایل ---
 async def file_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -86,7 +100,10 @@ async def file_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     if query.data == "has_file":
-        await query.edit_message_text("لطفاً فایل محتوا را ارسال کنید (تصویر، ویدیو، PDF، ZIP و ...):")
+        await query.edit_message_text(
+            "لطفاً فایل محتوا را ارسال کنید:",
+            reply_markup=get_retry_button()
+        )
         return WAITING_FOR_FILE
     elif query.data == "no_file":
         context.user_data["file"] = None
@@ -116,20 +133,15 @@ async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- درخواست توضیح ---
 async def ask_for_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = "متن توضیح در مورد محتوا را وارد کنید (یا اگر نمی‌خواهید، دکمه زیر را بزنید):"
+    reply_markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton("➡️ بدون متن توضیح ادامه بده", callback_data="no_desc")],
+        [InlineKeyboardButton("🔄 تلاش مجدد", callback_data="retry")]
+    ])
     if update.callback_query:
-        await update.callback_query.edit_message_text(
-            "متن توضیح در مورد محتوا را وارد کنید (یا اگر نمی‌خواهید، دکمه زیر را بزنید):",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("➡️ بدون متن توضیح ادامه بده", callback_data="no_desc")]
-            ])
-        )
+        await update.callback_query.edit_message_text(text, reply_markup=reply_markup)
     else:
-        await update.message.reply_text(
-            "متن توضیح در مورد محتوا را وارد کنید (یا اگر نمی‌خواهید، دکمه زیر را بزنید):",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("➡️ بدون متن توضیح ادامه بده", callback_data="no_desc")]
-            ])
-        )
+        await update.message.reply_text(text, reply_markup=reply_markup)
 
 # --- بدون توضیح ---
 async def description_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -155,7 +167,11 @@ async def receive_description(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 # --- درخواست پرامپت ---
 async def ask_for_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("لطفاً پرامپتی که با آن این محتوا تولید شده را وارد کنید:")
+    text = "لطفاً پرامپتی که با آن این محتوا تولید شده را وارد کنید:"
+    reply_markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 تلاش مجدد", callback_data="retry")]
+    ])
+    await update.message.reply_text(text, reply_markup=reply_markup)
 
 # --- دریافت پرامپت ---
 async def receive_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -166,7 +182,7 @@ async def receive_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await preview_and_publish(update, context)
     return ConversationHandler.END
 
-# --- انتشار نهایی با HTML (بدون خطا) ---
+# --- انتشار نهایی ---
 async def preview_and_publish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file = context.user_data.get("file")
     desc = context.user_data.get("description", "")
@@ -188,12 +204,10 @@ async def preview_and_publish(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     try:
         if file is None:
-            # فقط متن
             await context.bot.send_message(chat_id=CHANNEL_ID, text=final_text, parse_mode="HTML")
         else:
-            # تشخیص نوع فایل
             if hasattr(file, 'file_unique_id') and not hasattr(file, 'file_name'):
-                # این یک عکس است (PhotoSize)
+                # عکس است
                 await context.bot.send_photo(
                     chat_id=CHANNEL_ID,
                     photo=file.file_id,
@@ -201,9 +215,9 @@ async def preview_and_publish(update: Update, context: ContextTypes.DEFAULT_TYPE
                     parse_mode="HTML"
                 )
             else:
-                # این یک سند (document, video, audio, etc.) است
+                # سایر فایل‌ها
                 if file.file_size > 50 * 1024 * 1024:
-                    await update.message.reply_text("⚠️ فایل شما بیش از 50 مگابایت است و نمی‌توانم آن را فوروارد کنم.")
+                    await update.message.reply_text("⚠️ فایل شما بیش از 50 مگابایت است.")
                     return ConversationHandler.END
 
                 await context.bot.send_document(
@@ -215,9 +229,14 @@ async def preview_and_publish(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         await update.message.reply_text("✅ پست با موفقیت در کانال منتشر شد!")
     except Exception as e:
-        await update.message.reply_text(f"❌ خطا در انتشار: {str(e)}")
+        await update.message.reply_text(
+            f"❌ خطا در انتشار: {str(e)}",
+            reply_markup=get_retry_button()
+        )
+        return ConversationHandler.END
 
     return ConversationHandler.END
+
 # --- لغو ---
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_user(update, context):
@@ -233,7 +252,7 @@ def main():
         entry_points=[CommandHandler("start", start)],
         states={
             WAITING_FOR_FILE: [
-                CallbackQueryHandler(handle_file_step, pattern="^start_upload$"),
+                CallbackQueryHandler(handle_file_step, pattern="^(start_upload|retry)$"),
                 CallbackQueryHandler(file_decision, pattern="^(has_file|no_file)$"),
                 MessageHandler(
                     filters.Document.ALL | filters.PHOTO | filters.VIDEO | filters.AUDIO | filters.ANIMATION,
@@ -242,9 +261,11 @@ def main():
             ],
             WAITING_FOR_DESCRIPTION: [
                 CallbackQueryHandler(description_decision, pattern="^no_desc$"),
+                CallbackQueryHandler(handle_retry, pattern="^retry$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_description),
             ],
             WAITING_FOR_PROMPT: [
+                CallbackQueryHandler(handle_retry, pattern="^retry$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_prompt),
             ],
         },

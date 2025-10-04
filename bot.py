@@ -173,7 +173,7 @@ async def receive_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text, reply_markup=reply_markup)
         return WAITING_FOR_FINAL_NOTE
 
-# --- بدون توضیح پایانی ---
+# --- بدون توضیح پایانی → بلافاصله منتشر کن ---
 async def no_final_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -185,7 +185,7 @@ async def receive_final_note(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data["final_note"] = update.message.text
     return await publish(update, context)
 
-# --- انتشار ---
+# --- انتشار نهایی ---
 async def publish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     files = context.user_data.get("files", [])
     descriptions = context.user_data.get("descriptions", [])
@@ -193,33 +193,31 @@ async def publish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     final_note = context.user_data.get("final_note", "")
 
     try:
-        # اگر فقط یک عکس باشه و متن کمتر از 1024 کاراکتر باشه → در caption بفرست
-        if len(files) == 1 and hasattr(files[0], 'file_unique_id') and not hasattr(files[0], 'file_name'):
-            desc = descriptions[0] if descriptions else ""
-            prompt = prompts[0] if prompts else ""
-            full_text = f"{desc}\n\n<blockquote>{html.escape(prompt)}</blockquote>\n\n🔗 منبع: <a href='https://t.me/hamedaf_ir'>هوش مصنوعی با حامدافشاری</a>"
-            if len(full_text) <= 1024:
-                await context.bot.send_photo(chat_id=CHANNEL_ID, photo=files[0].file_id, caption=full_text, parse_mode="HTML")
-            else:
-                await context.bot.send_photo(chat_id=CHANNEL_ID, photo=files[0].file_id)
-                await context.bot.send_message(chat_id=CHANNEL_ID, text=full_text, parse_mode="HTML")
-        else:
-            # چند فایل → آلبوم + متن جدا
-            photos = [InputMediaPhoto(media=f.file_id) for f in files if hasattr(f, 'file_unique_id') and not hasattr(f, 'file_name')]
-            if photos:
-                await context.bot.send_media_group(chat_id=CHANNEL_ID, media=photos)
+        # ارسال آلبوم عکس (اگر وجود داشت)
+        photos = [InputMediaPhoto(media=f.file_id) for f in files if hasattr(f, 'file_unique_id') and not hasattr(f, 'file_name')]
+        if photos:
+            await context.bot.send_media_group(chat_id=CHANNEL_ID, media=photos)
 
-            full_text_parts = []
-            for i in range(len(descriptions)):
-                d = descriptions[i]
-                p = prompts[i]
-                if d: full_text_parts.append(d)
-                full_text_parts.append(f"<blockquote>{html.escape(p)}</blockquote>")
-                full_text_parts.append("")
-            if final_note: full_text_parts.append(final_note)
-            full_text_parts.append('🔗 منبع: <a href="https://t.me/hamedaf_ir">هوش مصنوعی با حامدافشاری</a>')
-            full_text = "\n".join(full_text_parts)
-            await context.bot.send_message(chat_id=CHANNEL_ID, text=full_text, parse_mode="HTML")
+        # ساخت متن کامل
+        full_text_parts = []
+        for i in range(len(descriptions)):
+            d = descriptions[i]
+            p = prompts[i]
+            if d.strip():  # اگر توضیح خالی نبود
+                full_text_parts.append(d)
+            # استفاده از <pre> برای قابلیت کپی و اسکرول
+            full_text_parts.append(f"<pre>{html.escape(p)}</pre>")
+            full_text_parts.append("")  # خط خالی
+
+        if final_note.strip():
+            full_text_parts.append(final_note)
+
+        # اضافه کردن لینک کانال فقط یک‌بار
+        full_text_parts.append('🔗 منبع: <a href="https://t.me/hamedaf_ir">هوش مصنوعی با حامدافشاری</a>')
+        full_text = "\n".join(full_text_parts)
+
+        # ارسال فقط یک پیام متنی
+        await context.bot.send_message(chat_id=CHANNEL_ID, text=full_text, parse_mode="HTML")
 
         await update.message.reply_text("✅ پست با موفقیت در کانال منتشر شد!")
         context.user_data.clear()
@@ -245,18 +243,15 @@ def main():
             WAITING_FOR_DESCRIPTION: [
                 CallbackQueryHandler(no_description, pattern="^no_desc$"),
                 CallbackQueryHandler(cancel_via_button, pattern="^cancel_now$"),
-                CallbackQueryHandler(handle_file_step, pattern="^retry$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_description),
             ],
             WAITING_FOR_PROMPT: [
                 CallbackQueryHandler(cancel_via_button, pattern="^cancel_now$"),
-                CallbackQueryHandler(handle_file_step, pattern="^retry$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_prompt),
             ],
             WAITING_FOR_FINAL_NOTE: [
                 CallbackQueryHandler(no_final_note, pattern="^no_final$"),
                 CallbackQueryHandler(cancel_via_button, pattern="^cancel_now$"),
-                CallbackQueryHandler(handle_file_step, pattern="^retry$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_final_note),
             ],
         },

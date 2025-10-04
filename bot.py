@@ -39,11 +39,14 @@ async def check_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return True
 
 # --- دکمه‌های تلاش مجدد + لغو ---
-def get_buttons():
-    return InlineKeyboardMarkup([
+def get_buttons(include_skip=False, skip_text="➡️ بدون محتوا"):
+    buttons = [
         [InlineKeyboardButton("🔄 تلاش مجدد", callback_data="retry")],
         [InlineKeyboardButton("❌ لغو", callback_data="cancel_now")]
-    ])
+    ]
+    if include_skip:
+        buttons.insert(0, [InlineKeyboardButton(skip_text, callback_data="skip")])
+    return InlineKeyboardMarkup(buttons)
 
 # --- شروع ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -77,10 +80,18 @@ async def handle_file_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["files"] = []
         context.user_data["descriptions"] = []
         context.user_data["prompts"] = []
-        await query.edit_message_text("لطفاً اولین فایل محتوا را ارسال کنید:", reply_markup=get_buttons())
+        await query.edit_message_text(
+            "آیا محتوایی برای ارسال دارید؟",
+            reply_markup=get_buttons(include_skip=True, skip_text="➡️ بدون محتوا")
+        )
         return WAITING_FOR_FILE
     elif query.data == "retry":
         return await start(update, context)
+    elif query.data == "skip":
+        context.user_data["files"] = []
+        context.user_data["descriptions"] = [""]
+        context.user_data["prompts"] = [""]
+        return await ask_for_final_note(update, context)
 
 # --- دریافت فایل ---
 async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -123,19 +134,11 @@ async def ask_for_description(update: Update, context: ContextTypes.DEFAULT_TYPE
     idx = context.user_data["current_index"]
     total = len(context.user_data["files"])
     text = f"📌 فایل {idx + 1} از {total}\n\nمتن توضیح را وارد کنید:"
-    reply_markup = InlineKeyboardMarkup([
-        [InlineKeyboardButton("➡️ بدون توضیح", callback_data="no_desc")],
-        [InlineKeyboardButton("🔄 تلاش مجدد", callback_data="retry")],
-        [InlineKeyboardButton("❌ لغو", callback_data="cancel_now")]
-    ])
-    if isinstance(update, Update) and update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=reply_markup)
-    else:
-        await update.message.reply_text(text, reply_markup=reply_markup)
+    await update.message.reply_text(text, reply_markup=get_buttons(include_skip=True, skip_text="➡️ بدون توضیح"))
     return WAITING_FOR_DESCRIPTION
 
 # --- بدون توضیح ---
-async def no_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def skip_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data["descriptions"].append("")
@@ -151,30 +154,39 @@ async def ask_for_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     idx = context.user_data["current_index"]
     total = len(context.user_data["files"])
     text = f"📌 پرامپت برای فایل {idx + 1} از {total}:\n(پرامپت را وارد کنید)"
-    await update.message.reply_text(text, reply_markup=get_buttons())
+    await update.message.reply_text(text, reply_markup=get_buttons(include_skip=True, skip_text="➡️ بدون پرامپت"))
     return WAITING_FOR_PROMPT
+
+# --- بدون پرامپت ---
+async def skip_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["prompts"].append("")
+    idx = context.user_data["current_index"]
+    if idx + 1 < len(context.user_data["files"]):
+        context.user_data["current_index"] += 1
+        return await ask_for_description(update, context)
+    else:
+        return await ask_for_final_note(update, context)
 
 # --- دریافت پرامپت ---
 async def receive_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["prompts"].append(update.message.text)
     idx = context.user_data["current_index"]
-
     if idx + 1 < len(context.user_data["files"]):
         context.user_data["current_index"] += 1
         return await ask_for_description(update, context)
     else:
-        # پرسش توضیح پایانی
-        text = "📌 توضیح پایانی (اختیاری):\n(مثل لینک بات یا CTA)"
-        reply_markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("➡️ بدون توضیح پایانی", callback_data="no_final")],
-            [InlineKeyboardButton("🔄 تلاش مجدد", callback_data="retry")],
-            [InlineKeyboardButton("❌ لغو", callback_data="cancel_now")]
-        ])
-        await update.message.reply_text(text, reply_markup=reply_markup)
-        return WAITING_FOR_FINAL_NOTE
+        return await ask_for_final_note(update, context)
 
-# --- بدون توضیح پایانی → بلافاصله منتشر کن ---
-async def no_final_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- درخواست توضیح پایانی ---
+async def ask_for_final_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = "📌 توضیح پایانی (اختیاری):\n(مثل لینک بات یا CTA)"
+    await update.message.reply_text(text, reply_markup=get_buttons(include_skip=True, skip_text="➡️ بدون توضیح پایانی"))
+    return WAITING_FOR_FINAL_NOTE
+
+# --- بدون توضیح پایانی → منتشر کن ---
+async def skip_final_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data["final_note"] = ""
@@ -203,22 +215,19 @@ async def publish(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for i in range(len(descriptions)):
             d = descriptions[i]
             p = prompts[i]
-            if d.strip():  # اگر توضیح خالی نبود
+            if d.strip():
                 full_text_parts.append(d)
-            # استفاده از <pre> برای قابلیت کپی و اسکرول
-            full_text_parts.append(f"<pre>{html.escape(p)}</pre>")
-            full_text_parts.append("")  # خط خالی
+            if p.strip():
+                full_text_parts.append(f"<pre>{html.escape(p)}</pre>")
+            full_text_parts.append("")
 
         if final_note.strip():
             full_text_parts.append(final_note)
 
-        # اضافه کردن لینک کانال فقط یک‌بار
         full_text_parts.append('🔗 منبع: <a href="https://t.me/hamedaf_ir">هوش مصنوعی با حامدافشاری</a>')
         full_text = "\n".join(full_text_parts)
 
-        # ارسال فقط یک پیام متنی
         await context.bot.send_message(chat_id=CHANNEL_ID, text=full_text, parse_mode="HTML")
-
         await update.message.reply_text("✅ پست با موفقیت در کانال منتشر شد!")
         context.user_data.clear()
         return ConversationHandler.END
@@ -234,23 +243,24 @@ def main():
         entry_points=[CommandHandler("start", start)],
         states={
             WAITING_FOR_FILE: [
-                CallbackQueryHandler(handle_file_step, pattern="^(start_upload|retry)$"),
+                CallbackQueryHandler(handle_file_step, pattern="^(start_upload|retry|skip)$"),
                 MessageHandler(filters.PHOTO | filters.Document.IMAGE, receive_file),
             ],
             WAITING_FOR_MORE_FILES: [
                 CallbackQueryHandler(handle_more_files, pattern="^(add_more|finish_files|cancel_now)$"),
             ],
             WAITING_FOR_DESCRIPTION: [
-                CallbackQueryHandler(no_description, pattern="^no_desc$"),
+                CallbackQueryHandler(skip_description, pattern="^skip$"),
                 CallbackQueryHandler(cancel_via_button, pattern="^cancel_now$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_description),
             ],
             WAITING_FOR_PROMPT: [
+                CallbackQueryHandler(skip_prompt, pattern="^skip$"),
                 CallbackQueryHandler(cancel_via_button, pattern="^cancel_now$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_prompt),
             ],
             WAITING_FOR_FINAL_NOTE: [
-                CallbackQueryHandler(no_final_note, pattern="^no_final$"),
+                CallbackQueryHandler(skip_final_note, pattern="^skip$"),
                 CallbackQueryHandler(cancel_via_button, pattern="^cancel_now$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_final_note),
             ],

@@ -38,14 +38,15 @@ async def check_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return False
     return True
 
-# --- دکمه‌های تلاش مجدد + لغو ---
+# --- دکمه‌ها ---
 def get_buttons(include_skip=False, skip_text="➡️ بدون محتوا"):
-    buttons = [
+    buttons = []
+    if include_skip:
+        buttons.append([InlineKeyboardButton(skip_text, callback_data="skip")])
+    buttons.extend([
         [InlineKeyboardButton("🔄 تلاش مجدد", callback_data="retry")],
         [InlineKeyboardButton("❌ لغو", callback_data="cancel_now")]
-    ]
-    if include_skip:
-        buttons.insert(0, [InlineKeyboardButton(skip_text, callback_data="skip")])
+    ])
     return InlineKeyboardMarkup(buttons)
 
 # --- شروع ---
@@ -77,17 +78,15 @@ async def handle_file_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if query.data == "start_upload":
-        context.user_data["files"] = []
-        context.user_data["descriptions"] = []
-        context.user_data["prompts"] = []
         await query.edit_message_text(
             "آیا محتوایی برای ارسال دارید؟",
-            reply_markup=get_buttons(include_skip=True, skip_text="➡️ بدون محتوا")
+            reply_markup=get_buttons(include_skip=True)
         )
         return WAITING_FOR_FILE
     elif query.data == "retry":
         return await start(update, context)
     elif query.data == "skip":
+        # بدون محتوا → مستقیماً به توضیح پایانی برو
         context.user_data["files"] = []
         context.user_data["descriptions"] = [""]
         context.user_data["prompts"] = [""]
@@ -107,13 +106,13 @@ async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("لطفاً فقط عکس یا فایل معتبر ارسال کنید.")
         return WAITING_FOR_FILE
 
-    context.user_data["files"].append(file)
+    context.user_data["files"] = [file]
     keyboard = [
         [InlineKeyboardButton("📤 آپلود فایل دیگر", callback_data="add_more")],
         [InlineKeyboardButton("➡️ ادامه", callback_data="finish_files")],
         [InlineKeyboardButton("❌ لغو", callback_data="cancel_now")]
     ]
-    await update.message.reply_text(f"فایل ذخیره شد ({len(context.user_data['files'])} فایل).", reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.message.reply_text("فایل ذخیره شد.", reply_markup=InlineKeyboardMarkup(keyboard))
     return WAITING_FOR_MORE_FILES
 
 # --- تصمیم درباره فایل بیشتر ---

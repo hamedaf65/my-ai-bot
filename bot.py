@@ -183,22 +183,23 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(TOKEN).build()
 
-    conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler("news", news),
-            CommandHandler("single", single),
-            CommandHandler("multi", multi)
+   conv_handler = ConversationHandler(
+    entry_points=[
+        CommandHandler("news", news),
+        CommandHandler("single", single),
+        CommandHandler("multi", multi)
+    ],
+    states={
+        FILES: [
+            CommandHandler("next", next_step),  # اولویت بالاتر
+            MessageHandler(filters.ALL & ~filters.COMMAND, collect_files)
         ],
-        states={
-            FILES: [
-                MessageHandler(filters.ALL, collect_files),
-                CommandHandler("next", next_step)
-            ],
-            CAPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_caption)],
-            PROMPT: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_prompt)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
+        CAPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_caption)],
+        PROMPT: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_prompt)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
+
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("cancel", cancel))

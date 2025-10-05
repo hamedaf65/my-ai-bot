@@ -26,7 +26,6 @@ logging.basicConfig(
 )
 
 # ---------------- دستورات اصلی ----------------
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return await update.message.reply_text("🚫 فقط ادمین می‌تواند از این ربات استفاده کند.")
@@ -43,11 +42,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
+    context.user_data.clear()
     await update.message.reply_text("🖼️ لطفاً فایل/عکس‌های پست خبری را ارسال کن (اختیاری).")
     return FILES
 
 async def collect_news_files(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ذخیره فایل‌ها
     if "files" not in context.user_data:
         context.user_data["files"] = []
 
@@ -60,6 +59,7 @@ async def collect_news_files(update: Update, context: ContextTypes.DEFAULT_TYPE)
     elif update.message.document:
         file_id = update.message.document.file_id
         context.user_data["files"].append(("document", file_id))
+
     await update.message.reply_text("✅ فایل ذخیره شد. فایل بعدی را بفرست یا /next را بزن برای ادامه.")
     return FILES
 
@@ -69,18 +69,18 @@ async def news_next(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def collect_news_caption(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["caption"] = update.message.text if update.message.text else ""
-    # ارسال نهایی به کانال
     files = context.user_data.get("files", [])
     caption = context.user_data.get("caption", "")
+
     if files:
         media_group = []
         for ftype, fid in files:
             if ftype == "photo":
-                media_group.append(InputMediaPhoto(fid, caption=caption if ftype == "photo" else None))
+                media_group.append(InputMediaPhoto(fid, caption=caption if ftype=="photo" else None))
             elif ftype == "video":
-                media_group.append(InputMediaVideo(fid, caption=caption if ftype == "video" else None))
+                media_group.append(InputMediaVideo(fid, caption=caption if ftype=="video" else None))
             elif ftype == "document":
-                media_group.append(InputMediaPhoto(fid))  # مستقیماً نمی‌توان سند را داخل مدیاگروپ با کپشن فرستاد
+                media_group.append(InputMediaPhoto(fid))  # fallback
         await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
     else:
         if caption:
@@ -89,16 +89,19 @@ async def collect_news_caption(update: Update, context: ContextTypes.DEFAULT_TYP
                 text=f"{caption}\n\n🔗 <a href='https://t.me/hamedaf_ir'>هوش مصنوعی با حامد افشاری</a>",
                 parse_mode=ParseMode.HTML
             )
+
     context.user_data.clear()
     await update.message.reply_text("✅ پست خبری ارسال شد!")
     return ConversationHandler.END
 
 # ---------------- پیام تکی و چندتایی ----------------
 async def single(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
     await update.message.reply_text("💬 لطفاً فایل‌ها را ارسال کن (اختیاری).")
     return FILES
 
 async def multi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
     await update.message.reply_text("📚 فایل‌ها را یکی‌یکی ارسال کن، بعد از اتمام /next را بزن.")
     return FILES
 
@@ -112,6 +115,7 @@ async def collect_files(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["files"].append(("video", update.message.video.file_id))
     elif update.message.document:
         context.user_data["files"].append(("document", update.message.document.file_id))
+
     await update.message.reply_text("✅ فایل ذخیره شد یا /next را بزن برای ادامه.")
     return FILES
 
@@ -130,9 +134,7 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = context.user_data.get("caption", "")
     prompt = context.user_data.get("prompt", "")
 
-    # محاسبه طول مجموع متن و پرامپت
     total_length = len(caption) + len(prompt)
-
     prompt_box = f"""
 <blockquote expandable style="background-color:#d0e7ff;padding:10px;border-radius:5px;">
 <pre><code>{html.escape(prompt)}</code></pre>
@@ -141,7 +143,7 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     final_caption = f"{caption}\n\n{prompt_box}\n\n🔗 <a href='https://t.me/hamedaf_ir'>هوش مصنوعی با حامد افشاری</a>"
 
-    if total_length < 400:  # پیام کوتاه → کپشن HTML
+    if total_length < 400:  # کوتاه → کپشن HTML
         if files:
             media_group = []
             for ftype, fid in files:
@@ -150,12 +152,11 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 elif ftype == "video":
                     media_group.append(InputMediaVideo(fid, caption=final_caption))
                 elif ftype == "document":
-                    # سندها نمی‌توانند کپشن طولانی داشته باشند در مدیاگروپ
                     media_group.append(InputMediaPhoto(fid))  # fallback
             await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
         else:
             await context.bot.send_message(chat_id=CHANNEL_ID, text=final_caption, parse_mode=ParseMode.HTML)
-    else:  # پیام طولانی → فایل‌ها در یک پیام و متن در پیام جدا
+    else:  # طولانی → فایل‌ها جدا، متن جدا
         if files:
             media_group = []
             for ftype, fid in files:
@@ -183,23 +184,22 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(TOKEN).build()
 
-   conv_handler = ConversationHandler(
-    entry_points=[
-        CommandHandler("news", news),
-        CommandHandler("single", single),
-        CommandHandler("multi", multi)
-    ],
-    states={
-        FILES: [
-            CommandHandler("next", next_step),  # اولویت بالاتر
-            MessageHandler(filters.ALL & ~filters.COMMAND, collect_files)
+    conv_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler("news", news),
+            CommandHandler("single", single),
+            CommandHandler("multi", multi)
         ],
-        CAPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_caption)],
-        PROMPT: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_prompt)],
-    },
-    fallbacks=[CommandHandler("cancel", cancel)],
-)
-
+        states={
+            FILES: [
+                CommandHandler("next", next_step),  # اولویت بالاتر
+                MessageHandler(filters.ALL & ~filters.COMMAND, collect_files)
+            ],
+            CAPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_caption)],
+            PROMPT: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_prompt)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("cancel", cancel))

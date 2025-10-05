@@ -4,6 +4,7 @@ import html
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
+    CommandHandler,          # ← این خط اضافه شد
     MessageHandler,
     CallbackQueryHandler,
     ContextTypes,

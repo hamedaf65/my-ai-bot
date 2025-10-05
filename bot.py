@@ -13,8 +13,8 @@ from telegram.ext import (
 )
 
 # ---------------- تنظیمات اصلی ----------------
-TOKEN = "YOUR_BOT_TOKEN_HERE"  # 🔹 توکن ربات خودت از @BotFather
-ADMIN_ID = 123456789            # 🔹 عدد آی‌دی عددی خودت (از /getidbot بگیر)
+TOKEN = os.getenv("TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))       
 
 # وضعیت‌ها برای مدیریت گفتگو
 IMAGES, CAPTION, PROMPTS = range(3)

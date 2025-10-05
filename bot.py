@@ -4,7 +4,6 @@ import html
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
-    CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
     ContextTypes,
@@ -55,8 +54,8 @@ async def cancel_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text("✅ تمام داده‌ها پاک شد. برای شروع مجدد، یکی از گزینه‌ها را انتخاب کنید.", reply_markup=get_main_menu())
     return ConversationHandler.END
 
-# --- شروع منو اصلی ---
-async def start_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- شروع منو اصلی (بدون /start) ---
+async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_user(update, context):
         return ConversationHandler.END
     await update.message.reply_text(
@@ -425,8 +424,11 @@ async def publish_multiple(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
 
+    # این دستور به جای /start، وقتی کاربر دکمه ۴ نقطه‌ای را لمس کرد، منو را نمایش می‌ده
+    application.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r'^/'), show_main_menu))
+
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start_menu)],
+        entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, show_main_menu)],
         states={
             WAITING_FOR_FILE: [
                 CallbackQueryHandler(handle_post_news, pattern="^post_news$"),

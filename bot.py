@@ -1,366 +1,176 @@
 import os
-import logging
 import html
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-    filters,
-    ConversationHandler,
-)
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
-# --- تنظیمات ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 YOUR_USER_ID = int(os.getenv("YOUR_USER_ID"))
 
-# --- وضعیت‌ها ---
-(
-    WAITING_FOR_FILE,
-    WAITING_FOR_MORE_FILES,
-    WAITING_FOR_DESCRIPTION,
-    WAITING_FOR_PROMPT,
-    WAITING_FOR_FINAL_NOTE,
-) = range(5)
-
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
-
-# --- بررسی دسترسی ---
 async def check_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != YOUR_USER_ID:
-        await update.message.reply_text("❌ شما مجاز به استفاده از این ربات نیستید.")
+        await update.message.reply_text("❌ شما مجاز نیستید.")
         return False
     return True
 
-# --- دکمه‌های اصلی منو ---
-def get_main_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📰 پست خبری", callback_data="post_news")],
-        [InlineKeyboardButton("📤 ارسال پیام با پرامپت (تکی)", callback_data="post_single")],
-        [InlineKeyboardButton("📤 ارسال پیام با پرامپت (چندتایی)", callback_data="post_multiple")],
-        [InlineKeyboardButton("❌ لغو تمام فرآیندها", callback_data="cancel_all")]
-    ])
-
-# --- لغو تمام فرآیندها ---
-async def cancel_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    context.user_data.clear()
-    await query.edit_message_text("✅ تمام داده‌ها پاک شد.", reply_markup=get_main_menu())
-    return ConversationHandler.END
-
-# --- شروع منو اصلی ---
+# --- منوی اصلی ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_user(update, context):
-        return ConversationHandler.END
+        return
     context.user_data.clear()
-    await update.message.reply_text(
-        "لطفاً نوع پست مورد نظر خود را انتخاب کنید:",
-        reply_markup=get_main_menu()
-    )
-    return ConversationHandler.END
-
-# --- حالت 1: پست خبری ---
-async def handle_post_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    context.user_data.clear()
-    context.user_data["mode"] = "news"
-    await query.edit_message_text(
-        "آیا محتوای فایلی (عکس/فایل) دارید؟",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ بله", callback_data="has_file_news")],
-            [InlineKeyboardButton("❌ خیر", callback_data="no_file_news")],
-            [InlineKeyboardButton("❌ لغو", callback_data="cancel_all")]
-        ])
-    )
-    return WAITING_FOR_FILE
-
-# --- بدون فایل در حالت خبری ---
-async def news_no_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("متن خبری را وارد کنید:")
-    return WAITING_FOR_DESCRIPTION
-
-# --- دریافت متن خبری ---
-async def receive_news_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["description"] = update.message.text
-    await publish_news(update, context)
-    return ConversationHandler.END
-
-# --- ارسال پست خبری ---
-async def publish_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    desc = context.user_data.get("description", "")
-    try:
-        await context.bot.send_message(chat_id=CHANNEL_ID, text=desc, parse_mode="HTML")
-        await update.message.reply_text("✅ پست خبری با موفقیت ارسال شد!")
-    except Exception as e:
-        await update.message.reply_text(f"❌ خطا: {str(e)}")
-    context.user_data.clear()
-
-# --- با فایل در حالت خبری ---
-async def news_has_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("لطفاً فایل محتوا را ارسال کنید:")
-    return WAITING_FOR_FILE
-
-# --- دریافت فایل در حالت خبری ---
-async def receive_news_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    file = None
-    if update.message.photo:
-        file = update.message.photo[-1]
-    elif update.message.document:
-        file = update.message.document
-    else:
-        await update.message.reply_text("لطفاً فقط عکس یا فایل معتبر ارسال کنید.")
-        return WAITING_FOR_FILE
-
-    context.user_data["file"] = file
-    await update.message.reply_text("متن خبری را وارد کنید:")
-    return WAITING_FOR_DESCRIPTION
-
-# --- ارسال پست خبری با فایل ---
-async def publish_news_with_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    file = context.user_data.get("file")
-    desc = context.user_data.get("description", "")
-
-    try:
-        if hasattr(file, 'file_unique_id') and not hasattr(file, 'file_name'):
-            await context.bot.send_photo(chat_id=CHANNEL_ID, photo=file.file_id, caption=desc, parse_mode="HTML")
-        else:
-            await context.bot.send_document(chat_id=CHANNEL_ID, document=file.file_id, caption=desc, parse_mode="HTML")
-        await update.message.reply_text("✅ پست خبری با موفقیت ارسال شد!")
-    except Exception as e:
-        await update.message.reply_text(f"❌ خطا: {str(e)}")
-    context.user_data.clear()
-
-# --- حالت 2: ارسال پیام با پرامپت (تکی) ---
-async def handle_post_single(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    context.user_data.clear()
-    context.user_data["mode"] = "single"
-    await query.edit_message_text("لطفاً فایل محتوا را ارسال کنید:")
-    return WAITING_FOR_FILE
-
-# --- دریافت فایل در حالت تکی ---
-async def receive_single_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    file = None
-    if update.message.photo:
-        file = update.message.photo[-1]
-    elif update.message.document:
-        file = update.message.document
-    else:
-        await update.message.reply_text("لطفاً فقط عکس یا فایل معتبر ارسال کنید.")
-        return WAITING_FOR_FILE
-
-    context.user_data["file"] = file
-    await update.message.reply_text("متن توضیح را وارد کنید:")
-    return WAITING_FOR_DESCRIPTION
-
-# --- دریافت توضیح در حالت تکی ---
-async def receive_single_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["description"] = update.message.text
-    await update.message.reply_text("پرامپت را وارد کنید:")
-    return WAITING_FOR_PROMPT
-
-# --- دریافت پرامپت در حالت تکی ---
-async def receive_single_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["prompt"] = update.message.text
-    await publish_single(update, context)
-    return ConversationHandler.END
-
-# --- ارسال پست تکی ---
-async def publish_single(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    file = context.user_data.get("file")
-    desc = context.user_data.get("description", "")
-    prompt = context.user_data.get("prompt", "")
-
-    try:
-        escaped_prompt = html.escape(prompt)
-        full_text = f"{desc}\n\n<pre>{escaped_prompt}</pre>\n\n🔗 منبع: <a href='https://t.me/hamedaf_ir'>هوش مصنوعی با حامدافشاری</a>"
-
-        if len(escaped_prompt) <= 1024:
-            if hasattr(file, 'file_unique_id') and not hasattr(file, 'file_name'):
-                await context.bot.send_photo(chat_id=CHANNEL_ID, photo=file.file_id, caption=full_text, parse_mode="HTML")
-            else:
-                await context.bot.send_document(chat_id=CHANNEL_ID, document=file.file_id, caption=full_text, parse_mode="HTML")
-        else:
-            if hasattr(file, 'file_unique_id') and not hasattr(file, 'file_name'):
-                await context.bot.send_photo(chat_id=CHANNEL_ID, photo=file.file_id)
-            else:
-                await context.bot.send_document(chat_id=CHANNEL_ID, document=file.file_id)
-            await context.bot.send_message(chat_id=CHANNEL_ID, text=full_text, parse_mode="HTML")
-
-        await update.message.reply_text("✅ پست با موفقیت ارسال شد!")
-    except Exception as e:
-        await update.message.reply_text(f"❌ خطا: {str(e)}")
-    context.user_data.clear()
-
-# --- حالت 3: ارسال پیام با پرامپت (چندتایی) ---
-async def handle_post_multiple(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    context.user_data.clear()
-    context.user_data["mode"] = "multiple"
-    context.user_data["files"] = []
-    await query.edit_message_text("لطفاً اولین فایل محتوا را ارسال کنید:")
-    return WAITING_FOR_FILE
-
-# --- دریافت فایل در حالت چندتایی ---
-async def receive_multiple_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    file = None
-    if update.message.photo:
-        file = update.message.photo[-1]
-    elif update.message.document:
-        file = update.message.document
-    else:
-        await update.message.reply_text("لطفاً فقط عکس یا فایل معتبر ارسال کنید.")
-        return WAITING_FOR_FILE
-
-    context.user_data["files"].append(file)
     keyboard = [
-        [InlineKeyboardButton("📤 آپلود فایل دیگر", callback_data="add_more_multiple")],
-        [InlineKeyboardButton("➡️ ادامه", callback_data="finish_files_multiple")],
-        [InlineKeyboardButton("❌ لغو", callback_data="cancel_all")]
+        [InlineKeyboardButton("📰 پست خبری", callback_data="news_main")],
+        [InlineKeyboardButton("📤 پرامپت (تکی)", callback_data="single_main")],
+        [InlineKeyboardButton("📤 پرامپت (چندتایی)", callback_data="multiple_main")],
+        [InlineKeyboardButton("❌ لغو", callback_data="cancel")]
     ]
-    await update.message.reply_text(f"فایل ذخیره شد ({len(context.user_data['files'])} فایل).", reply_markup=InlineKeyboardMarkup(keyboard))
-    return WAITING_FOR_MORE_FILES
-
-# --- اضافه کردن فایل بعدی ---
-async def add_more_multiple(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("فایل بعدی را ارسال کنید:")
-    return WAITING_FOR_FILE
-
-# --- اتمام ارسال فایل‌ها ---
-async def finish_files_multiple(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    context.user_data["current_index"] = 0
-    await ask_for_description_multiple(update, context)
-    return WAITING_FOR_DESCRIPTION
-
-# --- درخواست توضیح در حالت چندتایی ---
-async def ask_for_description_multiple(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    idx = context.user_data["current_index"]
-    total = len(context.user_data["files"])
-    await update.message.reply_text(f"📌 فایل {idx + 1} از {total}\n\nمتن توضیح را وارد کنید:")
-    return WAITING_FOR_DESCRIPTION
-
-# --- دریافت توضیح در حالت چندتایی ---
-async def receive_description_multiple(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["descriptions"] = context.user_data.get("descriptions", [])
-    context.user_data["descriptions"].append(update.message.text)
-    await ask_for_prompt_multiple(update, context)
-    return WAITING_FOR_PROMPT
-
-# --- درخواست پرامپت در حالت چندتایی ---
-async def ask_for_prompt_multiple(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    idx = context.user_data["current_index"]
-    total = len(context.user_data["files"])
-    await update.message.reply_text(f"📌 پرامپت برای فایل {idx + 1} از {total}:\n(پرامپت را وارد کنید)")
-    return WAITING_FOR_PROMPT
-
-# --- دریافت پرامپت در حالت چندتایی ---
-async def receive_prompt_multiple(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["prompts"] = context.user_data.get("prompts", [])
-    context.user_data["prompts"].append(update.message.text)
-    idx = context.user_data["current_index"]
-
-    if idx + 1 < len(context.user_data["files"]):
-        context.user_data["current_index"] += 1
-        await ask_for_description_multiple(update, context)
-        return WAITING_FOR_DESCRIPTION
+    if update.callback_query:
+        await update.callback_query.edit_message_text("انتخاب کنید:", reply_markup=InlineKeyboardMarkup(keyboard))
     else:
-        await publish_multiple(update, context)
-        return ConversationHandler.END
+        await update.message.reply_text("انتخاب کنید:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# --- ارسال پست چندتایی ---
-async def publish_multiple(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    files = context.user_data.get("files", [])
-    descriptions = context.user_data.get("descriptions", [])
-    prompts = context.user_data.get("prompts", [])
+# --- مدیریت همه دکمه‌ها ---
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "cancel":
+        context.user_data.clear()
+        await query.edit_message_text("❌ لغو شد.")
+        return
+    
+    # بازگشت به منوی اصلی
+    if query.data == "back_to_main":
+        await start(update, context)
+        return
 
+    # مرحله اول: انتخاب نوع پست
+    if query.data == "news_main":
+        context.user_data["mode"] = "news"
+        await query.edit_message_text(
+            "آیا فایل دارید؟",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ بله", callback_data="news_has_file")],
+                [InlineKeyboardButton("❌ خیر", callback_data="news_no_file")],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")]
+            ])
+        )
+    elif query.data == "single_main":
+        context.user_data["mode"] = "single"
+        await query.edit_message_text("فایل خود را ارسال کنید.")
+    elif query.data == "multiple_main":
+        context.user_data["mode"] = "multiple"
+        context.user_data["files"] = []
+        await query.edit_message_text("اولین فایل را ارسال کنید.")
+
+    # مرحله دوم: پست خبری
+    elif query.data == "news_has_file":
+        context.user_data["news_file_required"] = True
+        await query.edit_message_text("فایل خود را ارسال کنید.")
+    elif query.data == "news_no_file":
+        context.user_data["news_file_required"] = False
+        await query.edit_message_text("متن خبری را وارد کنید.")
+
+# --- دریافت فایل ---
+async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_user(update, context):
+        return
+    
+    file = None
+    if update.message.photo:
+        file = update.message.photo[-1]
+    elif update.message.document:
+        file = update.message.document
+    else:
+        await update.message.reply_text("فقط عکس یا فایل معتبر بفرستید.")
+        return
+
+    mode = context.user_data.get("mode")
+    if mode == "news":
+        context.user_data["file"] = file
+        await update.message.reply_text("متن خبری را وارد کنید.")
+    elif mode == "single":
+        context.user_data["file"] = file
+        await update.message.reply_text("متن را وارد کنید.")
+    elif mode == "multiple":
+        context.user_data["files"].append(file)
+        await update.message.reply_text(
+            f"فایل ذخیره شد ({len(context.user_data['files'])} فایل).\nادامه؟",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📤 آپلود فایل دیگر", callback_data="multiple_add")],
+                [InlineKeyboardButton("➡️ ادامه", callback_data="multiple_finish")],
+                [InlineKeyboardButton("❌ لغو", callback_data="cancel")]
+            ])
+        )
+
+# --- مدیریت فایل‌های چندتایی ---
+async def multiple_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.data == "multiple_add":
+        await query.edit_message_text("فایل بعدی را ارسال کنید.")
+    elif query.data == "multiple_finish":
+        context.user_data["step"] = "text"
+        await query.edit_message_text("متن را وارد کنید.")
+
+# --- دریافت متن ---
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_user(update, context):
+        return
+    
+    text = update.message.text
+    mode = context.user_data.get("mode")
+    
     try:
-        # ارسال آلبوم عکس
-        photos = [InputMediaPhoto(media=f.file_id) for f in files if hasattr(f, 'file_unique_id') and not hasattr(f, 'file_name')]
-        if photos:
-            await context.bot.send_media_group(chat_id=CHANNEL_ID, media=photos)
-
-        # ساخت متن کامل
-        full_text_parts = []
-        for i in range(len(descriptions)):
-            d = descriptions[i]
-            p = prompts[i]
-            if d.strip():
-                full_text_parts.append(d)
-            if p.strip():
-                full_text_parts.append(f"<pre>{html.escape(p)}</pre>")
-            full_text_parts.append("")
-
-        full_text_parts.append('🔗 منبع: <a href="https://t.me/hamedaf_ir">هوش مصنوعی با حامدافشاری</a>')
-        full_text = "\n".join(full_text_parts)
-
-        await context.bot.send_message(chat_id=CHANNEL_ID, text=full_text, parse_mode="HTML")
-        await update.message.reply_text("✅ پست با موفقیت ارسال شد!")
+        if mode == "news":
+            file = context.user_data.get("file")
+            if file:
+                if hasattr(file, 'file_unique_id') and not hasattr(file, 'file_name'):
+                    await context.bot.send_photo(CHANNEL_ID, photo=file.file_id, caption=text)
+                else:
+                    await context.bot.send_document(CHANNEL_ID, document=file.file_id, caption=text)
+            else:
+                await context.bot.send_message(CHANNEL_ID, text=text)
+        elif mode == "single":
+            file = context.user_data.get("file")
+            if file:
+                if hasattr(file, 'file_unique_id') and not hasattr(file, 'file_name'):
+                    await context.bot.send_photo(CHANNEL_ID, photo=file.file_id)
+                else:
+                    await context.bot.send_document(CHANNEL_ID, document=file.file_id)
+            await context.bot.send_message(
+                CHANNEL_ID,
+                text=f"<pre>{html.escape(text)}</pre>\n\n🔗 منبع: <a href='https://t.me/hamedaf_ir'>هوش مصنوعی با حامدافشاری</a>",
+                parse_mode="HTML"
+            )
+        elif mode == "multiple":
+            files = context.user_data.get("files", [])
+            for f in files:
+                if hasattr(f, 'file_unique_id') and not hasattr(f, 'file_name'):
+                    await context.bot.send_photo(CHANNEL_ID, photo=f.file_id)
+                else:
+                    await context.bot.send_document(CHANNEL_ID, document=f.file_id)
+            await context.bot.send_message(
+                CHANNEL_ID,
+                text=f"<pre>{html.escape(text)}</pre>\n\n🔗 منبع: <a href='https://t.me/hamedaf_ir'>هوش مصنوعی با حامدافشاری</a>",
+                parse_mode="HTML"
+            )
+        
+        await update.message.reply_text("✅ ارسال شد!")
+        context.user_data.clear()
     except Exception as e:
         await update.message.reply_text(f"❌ خطا: {str(e)}")
-    context.user_data.clear()
 
 # --- راه‌اندازی ---
 def main():
-    application = Application.builder().token(BOT_TOKEN).build()
-
-    # فقط یک handler برای /start
-    application.add_handler(CommandHandler("start", start))
-
-    # ConversationHandler برای مدیریت مراحل
-    conv_handler = ConversationHandler(
-        entry_points=[],
-        states={
-            WAITING_FOR_FILE: [
-                CallbackQueryHandler(handle_post_news, pattern="^post_news$"),
-                CallbackQueryHandler(handle_post_single, pattern="^post_single$"),
-                CallbackQueryHandler(handle_post_multiple, pattern="^post_multiple$"),
-                CallbackQueryHandler(cancel_all, pattern="^cancel_all$"),
-                CallbackQueryHandler(news_has_file, pattern="^has_file_news$"),
-                CallbackQueryHandler(news_no_file, pattern="^no_file_news$"),
-                CallbackQueryHandler(add_more_multiple, pattern="^add_more_multiple$"),
-                CallbackQueryHandler(finish_files_multiple, pattern="^finish_files_multiple$"),
-                MessageHandler(filters.PHOTO | filters.Document.IMAGE, receive_news_file),
-                MessageHandler(filters.PHOTO | filters.Document.IMAGE, receive_single_file),
-                MessageHandler(filters.PHOTO | filters.Document.IMAGE, receive_multiple_file),
-            ],
-            WAITING_FOR_MORE_FILES: [
-                CallbackQueryHandler(add_more_multiple, pattern="^add_more_multiple$"),
-                CallbackQueryHandler(finish_files_multiple, pattern="^finish_files_multiple$"),
-                CallbackQueryHandler(cancel_all, pattern="^cancel_all$"),
-            ],
-            WAITING_FOR_DESCRIPTION: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_news_text),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_single_description),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_description_multiple),
-            ],
-            WAITING_FOR_PROMPT: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_single_prompt),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_prompt_multiple),
-            ],
-        },
-        fallbacks=[CommandHandler("start", start)],
-    )
-
-    application.add_handler(conv_handler)
-    application.run_polling()
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(CallbackQueryHandler(multiple_handler, pattern="^multiple_"))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, file_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+    app.run_polling()
 
 if __name__ == "__main__":
     main()

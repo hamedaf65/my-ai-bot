@@ -4,17 +4,17 @@
 import os
 import logging
 from telegram import (
-    Update, InputMediaPhoto
+    Update, InputMediaPhoto, InlineKeyboardButton, InlineKeyboardMarkup
 )
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters,
-    ContextTypes, ConversationHandler
+    ContextTypes, ConversationHandler, CallbackQueryHandler
 )
 
 # ---------------- تنظیمات اصلی ----------------
 TOKEN = os.getenv("TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))       
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
 # وضعیت‌ها برای مدیریت گفتگو
 IMAGES, CAPTION, PROMPTS = range(3)
@@ -23,26 +23,48 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 
-# ---------------- دستورات منو ----------------
+# ---------------- منو با دکمه‌های Inline ----------------
+def get_main_menu():
+    keyboard = [
+        [InlineKeyboardButton("📰 پست خبری", callback_data='news')],
+        [InlineKeyboardButton("💬 پیام تکی", callback_data='single')],
+        [InlineKeyboardButton("📚 پیام چندتایی", callback_data='multi')],
+        [InlineKeyboardButton("❌ لغو", callback_data='cancel')]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return await update.message.reply_text("🚫 فقط ادمین می‌تواند از این ربات استفاده کند.")
     await update.message.reply_text(
         "سلام حامد 👋\n"
-        "از منوی پایین (دکمه چهار نقطه کنار سنجاق 📎) یکی از گزینه‌ها رو انتخاب کن:\n\n"
-        "📰 /news - پست خبری\n"
-        "💬 /single - ارسال پیام با پرامپت (تکی)\n"
-        "📚 /multi - ارسال پیام با پرامپت (چندتایی)\n"
-        "❌ /cancel - لغو تمام فرآیندها"
+        "از منوی پایین یکی از گزینه‌ها را انتخاب کن:",
+        reply_markup=get_main_menu()
     )
+
+
+# ---------------- Callback برای دکمه‌ها ----------------
+async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()  # پاسخ فوری برای جلوگیری از ساعت گردان
+    data = query.data
+
+    if data == 'news':
+        return await news(update, context)
+    elif data == 'single':
+        return await single(update, context)
+    elif data == 'multi':
+        return await multi(update, context)
+    elif data == 'cancel':
+        return await cancel(update, context)
 
 
 # ---------------- حالت ۱: پست خبری ----------------
 async def news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
-    await update.message.reply_text("🖼️ لطفاً عکس‌های پست خبری را ارسال کن (می‌تونی چندتا بفرستی).")
+    await update.effective_message.reply_text("🖼️ لطفاً عکس‌های پست خبری را ارسال کن (می‌تونی چندتا بفرستی).")
     return IMAGES
 
 
@@ -98,24 +120,24 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # پاک کردن داده‌ها
     context.user_data.clear()
-    await update.message.reply_text("✅ پست آماده شد! حالا می‌تونی اونو فوروارد کنی به کانالت.")
+    await update.message.reply_text("✅ پست آماده شد! حالا می‌تونی اونو فوروارد کنی به کانالت.", reply_markup=get_main_menu())
     return ConversationHandler.END
 
 
 # ---------------- حالت ۲ و ۳: پیام تکی و چندتایی ----------------
 async def single(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✳️ لطفاً تصویر مورد نظر را ارسال کن.")
+    await update.effective_message.reply_text("✳️ لطفاً تصویر مورد نظر را ارسال کن.")
     return IMAGES
 
 async def multi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📸 تصاویر مورد نظر را یکی‌یکی ارسال کن، بعد از اتمام /next رو بزن.")
+    await update.effective_message.reply_text("📸 تصاویر مورد نظر را یکی‌یکی ارسال کن، بعد از اتمام /next رو بزن.")
     return IMAGES
 
 
 # ---------------- لغو فرآیند ----------------
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
-    await update.message.reply_text("❌ تمام فرآیندها لغو شد.")
+    await update.effective_message.reply_text("❌ تمام فرآیندها لغو شد.", reply_markup=get_main_menu())
     return ConversationHandler.END
 
 
@@ -141,8 +163,9 @@ def main():
     )
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("cancel", cancel))
+    app.add_handler(CallbackQueryHandler(menu_callback))
     app.add_handler(conv_handler)
+    app.add_handler(CommandHandler("cancel", cancel))
 
     print("🤖 Bot is running... (Press CTRL+C to stop)")
     app.run_polling()

@@ -1,7 +1,7 @@
 # bot.py
 # نسخه ویژه برای حامد افشاری ❤️
 # ربات مدیریت پست تلگرام با منوی ۴ نقطه‌ای و پرامپت اسکرولی HTML
-
+import os
 import logging
 from telegram import (
     Update, InputMediaPhoto

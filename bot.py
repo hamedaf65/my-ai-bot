@@ -51,14 +51,11 @@ async def collect_news_files(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data["files"] = []
 
     if update.message.photo:
-        file_id = update.message.photo[-1].file_id
-        context.user_data["files"].append(("photo", file_id))
+        context.user_data["files"].append(("photo", update.message.photo[-1].file_id))
     elif update.message.video:
-        file_id = update.message.video.file_id
-        context.user_data["files"].append(("video", file_id))
+        context.user_data["files"].append(("video", update.message.video.file_id))
     elif update.message.document:
-        file_id = update.message.document.file_id
-        context.user_data["files"].append(("document", file_id))
+        context.user_data["files"].append(("document", update.message.document.file_id))
 
     await update.message.reply_text("✅ فایل ذخیره شد. فایل بعدی را بفرست یا /next را بزن برای ادامه.")
     return FILES
@@ -80,7 +77,7 @@ async def collect_news_caption(update: Update, context: ContextTypes.DEFAULT_TYP
             elif ftype == "video":
                 media_group.append(InputMediaVideo(fid, caption=caption if ftype=="video" else None))
             elif ftype == "document":
-                media_group.append(InputMediaPhoto(fid))  # fallback
+                media_group.append(InputMediaPhoto(fid))  # fallback برای سند
         await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
     else:
         if caption:
@@ -143,20 +140,25 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     final_caption = f"{caption}\n\n{prompt_box}\n\n🔗 <a href='https://t.me/hamedaf_ir'>هوش مصنوعی با حامد افشاری</a>"
 
-    if total_length < 400:  # کوتاه → کپشن HTML
+    # ✅ بررسی محدودیت استاندارد ۱۰۲۴ کاراکتر کپشن تلگرام
+    if total_length <= 1024:  # کوتاه → در کپشن فایل قرار بگیرد
         if files:
+            first_sent = False
             media_group = []
             for ftype, fid in files:
                 if ftype == "photo":
-                    media_group.append(InputMediaPhoto(fid, caption=final_caption))
+                    media_group.append(InputMediaPhoto(fid, caption=final_caption if not first_sent else None, parse_mode=ParseMode.HTML))
+                    first_sent = True
                 elif ftype == "video":
-                    media_group.append(InputMediaVideo(fid, caption=final_caption))
+                    media_group.append(InputMediaVideo(fid, caption=final_caption if not first_sent else None, parse_mode=ParseMode.HTML))
+                    first_sent = True
                 elif ftype == "document":
-                    media_group.append(InputMediaPhoto(fid))  # fallback
+                    media_group.append(InputMediaDocument(fid, caption=final_caption if not first_sent else None, parse_mode=ParseMode.HTML))
+                    first_sent = True
             await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
         else:
             await context.bot.send_message(chat_id=CHANNEL_ID, text=final_caption, parse_mode=ParseMode.HTML)
-    else:  # طولانی → فایل‌ها جدا، متن جدا
+    else:  # طولانی → فایل جدا، متن جدا
         if files:
             media_group = []
             for ftype, fid in files:
@@ -165,7 +167,7 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 elif ftype == "video":
                     media_group.append(InputMediaVideo(fid))
                 elif ftype == "document":
-                    media_group.append(InputMediaPhoto(fid))  # fallback
+                    media_group.append(InputMediaDocument(fid))
             await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
         if caption or prompt:
             await context.bot.send_message(chat_id=CHANNEL_ID, text=final_caption, parse_mode=ParseMode.HTML)
@@ -192,7 +194,7 @@ def main():
         ],
         states={
             FILES: [
-                CommandHandler("next", next_step),  # اولویت بالاتر
+                CommandHandler("next", next_step),
                 MessageHandler(filters.ALL & ~filters.COMMAND, collect_files)
             ],
             CAPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_caption)],
@@ -201,8 +203,22 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
+    # پست خبری بدون مرحله پرامپت
+    news_handler = ConversationHandler(
+        entry_points=[CommandHandler("news", news)],
+        states={
+            FILES: [
+                CommandHandler("next", news_next),
+                MessageHandler(filters.ALL & ~filters.COMMAND, collect_news_files)
+            ],
+            CAPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_news_caption)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("cancel", cancel))
+    app.add_handler(news_handler)
     app.add_handler(conv_handler)
 
     print("🤖 Bot is running... (Press CTRL+C to stop)")

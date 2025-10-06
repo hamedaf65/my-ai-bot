@@ -1,15 +1,14 @@
 # bot.py
 # نسخه ویژه برای حامد افشاری ❤️
-# ربات مدیریت پست تلگرام با پشتیبانی فایل‌های مختلف و پرامپت هوشمند + دکمه 📋 کپی پرامپت
-# نسخه‌ی نهایی با نمایش پرامپت در قالب Markdown (سه backtick)
+# ربات مدیریت پست تلگرام با پشتیبانی فایل‌های مختلف و پرامپت هوشمند
+# نسخه‌ی نهایی با نمایش پرامپت در قالب Markdown (سه backtick) بدون دکمه کپی پرامپت
 
 import os
 import html
 import logging
 import urllib.parse
 from telegram import (
-    Update, InputMediaPhoto, InputMediaVideo, InputMediaDocument,
-    InlineKeyboardMarkup, InlineKeyboardButton
+    Update, InputMediaPhoto, InputMediaVideo, InputMediaDocument
 )
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -21,22 +20,12 @@ from telegram.ext import (
 TOKEN = os.getenv("TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 CHANNEL_ID = os.getenv("CHANNEL_ID")  # آیدی عددی کانال
-BOT_USERNAME = os.getenv("BOT_USERNAME")  # مثلاً: hamedaf_bot
 
 FILES, CAPTION, PROMPT = range(3)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
-
-# ---------------- تابع ساخت دکمه کپی پرامپت ----------------
-def create_prompt_button(prompt_text):
-    if not prompt_text:
-        return None
-    encoded_prompt = urllib.parse.quote(prompt_text)
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📋 کپی پرامپت", url=f"https://t.me/{BOT_USERNAME}?start=prompt_{encoded_prompt}")]
-    ])
 
 # ---------------- دستور /start ----------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -100,20 +89,20 @@ async def collect_news_caption(update: Update, context: ContextTypes.DEFAULT_TYP
     caption = update.message.text or ""
     files = context.user_data.get("files", [])
 
-    caption_with_link = f"{caption}\n\n🔗 <a href='https://t.me/hamedaf_ir?embed=1'>هوش مصنوعی با حامد افشاری</a>"
+    caption_with_link = f"{caption}\n\n🔗 [هوش مصنوعی با حامد افشاری](https://t.me/hamedaf_ir)"
 
     if files:
         media_group = []
         first_sent = False
         for ftype, fid in files:
             if ftype == "photo":
-                media_group.append(InputMediaPhoto(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML))
+                media_group.append(InputMediaPhoto(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.MARKDOWN))
                 first_sent = True
             elif ftype == "video":
-                media_group.append(InputMediaVideo(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML))
+                media_group.append(InputMediaVideo(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.MARKDOWN))
                 first_sent = True
             elif ftype == "document":
-                media_group.append(InputMediaDocument(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML))
+                media_group.append(InputMediaDocument(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.MARKDOWN))
                 first_sent = True
         await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
     else:
@@ -121,7 +110,7 @@ async def collect_news_caption(update: Update, context: ContextTypes.DEFAULT_TYP
             await context.bot.send_message(
                 chat_id=CHANNEL_ID,
                 text=caption_with_link,
-                parse_mode="HTML",
+                parse_mode="Markdown",
                 disable_web_page_preview=True
             )
 
@@ -177,13 +166,9 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = context.user_data.get("prompt", "")
 
     total_length = len(caption) + len(prompt)
-    keyboard = create_prompt_button(prompt)
 
     # 🔷 نمایش پرامپت با Markdown و سه backtick
-    if prompt:
-        prompt_box = "```" + prompt + "```"
-    else:
-        prompt_box = ""
+    prompt_box = f"```{prompt}```" if prompt else ""
 
     final_caption = f"{caption}\n\n{prompt_box}\n\n🔗 [هوش مصنوعی با حامد افشاری](https://t.me/hamedaf_ir)"
 
@@ -200,17 +185,13 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 elif ftype == "document":
                     media_group.append(InputMediaDocument(fid, caption=final_caption if not first_sent else None, parse_mode=ParseMode.MARKDOWN))
                 first_sent = True
-
-            msg_list = await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
-            if keyboard:
-                await context.bot.edit_message_reply_markup(CHANNEL_ID, msg_list[0].message_id, reply_markup=keyboard)
+            await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
         else:
             await context.bot.send_message(
                 chat_id=CHANNEL_ID,
                 text=final_caption,
                 parse_mode="Markdown",
-                disable_web_page_preview=True,
-                reply_markup=keyboard
+                disable_web_page_preview=True
             )
     else:
         if files:
@@ -227,8 +208,7 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=CHANNEL_ID,
             text=final_caption,
             parse_mode="Markdown",
-            disable_web_page_preview=True,
-            reply_markup=keyboard
+            disable_web_page_preview=True
         )
 
     context.user_data.clear()

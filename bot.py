@@ -60,9 +60,65 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "❌ /cancel - لغو تمام فرآیندها"
     )
 
-# ---------------- پست خبری (بدون تغییر) ----------------
-# همون نسخه‌ای که خودت گذاشتی بدون تغییر باقی می‌مونه 👇
-# (از ارسال مجددش صرف‌نظر می‌کنم تا طول پاسخ زیاد نشه)
+# ---------------- پست خبری ----------------
+async def news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    context.user_data.clear()
+    await update.message.reply_text("🖼️ لطفاً فایل/عکس‌های پست خبری را ارسال کن (اختیاری).")
+    return FILES
+
+async def collect_news_files(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if "files" not in context.user_data:
+        context.user_data["files"] = []
+    msg = update.message
+
+    if msg.photo:
+        context.user_data["files"].append(("photo", msg.photo[-1].file_id))
+    elif msg.video:
+        context.user_data["files"].append(("video", msg.video.file_id))
+    elif msg.document:
+        context.user_data["files"].append(("document", msg.document.file_id))
+
+    await update.message.reply_text("✅ فایل ذخیره شد. فایل بعدی را بفرست یا /next را بزن برای ادامه.")
+    return FILES
+
+async def news_next(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("📝 حالا متن پست را ارسال کن (اختیاری).")
+    return CAPTION
+
+async def collect_news_caption(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    caption = update.message.text or ""
+    files = context.user_data.get("files", [])
+
+    caption_with_link = f"{caption}\n\n🔗 <a href='https://t.me/hamedaf_ir?embed=1'>هوش مصنوعی با حامد افشاری</a>"
+
+    if files:
+        media_group = []
+        first_sent = False
+        for ftype, fid in files:
+            if ftype == "photo":
+                media_group.append(InputMediaPhoto(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML))
+                first_sent = True
+            elif ftype == "video":
+                media_group.append(InputMediaVideo(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML))
+                first_sent = True
+            elif ftype == "document":
+                media_group.append(InputMediaDocument(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML))
+                first_sent = True
+        await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
+    else:
+        if caption:
+            await context.bot.send_message(
+                chat_id=CHANNEL_ID,
+                text=caption_with_link,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True
+            )
+
+    context.user_data.clear()
+    await update.message.reply_text("✅ پست خبری ارسال شد!")
+    return ConversationHandler.END
 
 # ---------------- پیام تکی و چندتایی ----------------
 async def single(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -115,7 +171,7 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 </blockquote>
 """ if prompt else ""
 
-    final_caption = f"{caption}\n\n{prompt_box}\n\n🔗 <a href='https://t.me/hamedaf_ir'>هوش مصنوعی با حامد افشاری</a>"
+    final_caption = f"{caption}\n\n{prompt_box}\n\n🔗 <a href='https://t.me/hamedaf_ir?embed=1'>هوش مصنوعی با حامد افشاری</a>"
 
     if total_length <= 1024:  # کپشن کوتاه → همه در یک پست
         if files:
@@ -133,7 +189,6 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     first_sent = True
 
             msg_list = await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
-            # 📎 دکمه کپی فقط به اولین پیام اضافه می‌شود
             if keyboard:
                 await context.bot.edit_message_reply_markup(CHANNEL_ID, msg_list[0].message_id, reply_markup=keyboard)
         else:
@@ -179,8 +234,18 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(TOKEN).build()
 
-    # این بخش‌های خبری مثل نسخه قبلی تو بدون تغییر باقی می‌مونن
-    from bot_news_section import news_handler  # فرض بر این است که بخش خبری در فایل جداست
+    # بخش خبری در همین فایل تعریف شده
+    news_handler = ConversationHandler(
+        entry_points=[CommandHandler("news", news)],
+        states={
+            FILES: [
+                CommandHandler("next", news_next),
+                MessageHandler(filters.ALL & ~filters.COMMAND, collect_news_files)
+            ],
+            CAPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_news_caption)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
 
     conv_handler = ConversationHandler(
         entry_points=[
@@ -200,8 +265,8 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("cancel", cancel))
-    app.add_handler(conv_handler)
     app.add_handler(news_handler)
+    app.add_handler(conv_handler)
 
     print("🤖 Bot is running... (Press CTRL+C to stop)")
     app.run_polling()

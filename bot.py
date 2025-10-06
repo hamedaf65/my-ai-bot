@@ -180,7 +180,7 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = create_prompt_button(prompt)
 
     # 🔷 پرامپت در قالب Markdown code block
-    prompt_box = f"```{prompt}```" if prompt else ""
+    prompt_box = "```" + prompt + "```" if prompt else ""
 
     final_caption = f"{caption}\n\n{prompt_box}\n\n🔗 [هوش مصنوعی با حامد افشاری](https://t.me/hamedaf_ir)"
 

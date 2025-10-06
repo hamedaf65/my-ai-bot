@@ -1,6 +1,7 @@
 # bot.py
-# 🌿 نسخه ویژه برای حامد افشاری ❤️
-# ربات مدیریت پست تلگرام با پشتیبانی فایل‌های چندگانه + پرامپت هوشمند + کنترل کامل دسترسی
+# نسخه ویژه برای حامد افشاری ❤️
+# ربات مدیریت پست تلگرام با پشتیبانی فایل‌های مختلف و پرامپت هوشمند + دکمه 📋 کپی پرامپت
+# نسخه‌ی نهایی اصلاح‌شده و آماده اجرا در Railway
 
 import os
 import html
@@ -19,8 +20,8 @@ from telegram.ext import (
 # ---------------- تنظیمات اصلی ----------------
 TOKEN = os.getenv("TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
-CHANNEL_ID = os.getenv("CHANNEL_ID")
-BOT_USERNAME = os.getenv("BOT_USERNAME")
+CHANNEL_ID = os.getenv("CHANNEL_ID")  # آیدی عددی کانال
+BOT_USERNAME = os.getenv("BOT_USERNAME")  # مثلاً: hamedaf_bot
 
 FILES, CAPTION, PROMPT = range(3)
 
@@ -42,7 +43,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     user_id = update.effective_user.id
 
-    # 🔹 حالت دریافت پرامپت از لینک (برای کاربران دیگر مجاز)
+    # 🔹 اگر از لینک پرامپت وارد شد → مجاز برای همه
     if args and args[0].startswith("prompt_"):
         prompt_text = urllib.parse.unquote(args[0][len("prompt_"):])
         await update.message.reply_text(
@@ -51,9 +52,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # 🔒 فقط ادمین اجازه دارد به منو دسترسی داشته باشد
+    # 🔒 فقط ادمین اجازه دارد از سایر دستورات استفاده کند
     if user_id != ADMIN_ID:
-        await update.message.reply_text("🚫 شما اجازه‌ی ارسال پست را ندارید.")
+        await update.message.reply_text(
+            "🚫 شما اجازه‌ی استفاده از این ربات را ندارید.\n"
+            "فقط می‌توانید از لینک‌های پرامپت استفاده کنید."
+        )
         return
 
     await update.message.reply_text(
@@ -65,23 +69,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "❌ /cancel - لغو و ریست کامل"
     )
 
-# ---------------- محدودسازی عمومی ----------------
-def admin_only(func):
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if update.effective_user.id != ADMIN_ID:
-            await update.message.reply_text("🚫 فقط ادمین می‌تواند از این دستور استفاده کند.")
-            return ConversationHandler.END
-        return await func(update, context)
-    return wrapper
-
 # ---------------- پست خبری ----------------
-@admin_only
 async def news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
     context.user_data.clear()
-    await update.message.reply_text("🖼️ لطفاً فایل یا عکس‌های پست خبری را ارسال کن (اختیاری).")
+    await update.message.reply_text("🖼️ لطفاً فایل/عکس‌های پست خبری را ارسال کن (اختیاری).")
     return FILES
 
-@admin_only
 async def collect_news_files(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "files" not in context.user_data:
         context.user_data["files"] = []
@@ -97,12 +92,10 @@ async def collect_news_files(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text("✅ فایل ذخیره شد. فایل بعدی را بفرست یا /next را بزن برای ادامه.")
     return FILES
 
-@admin_only
 async def news_next(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("📝 حالا متن پست را ارسال کن (اختیاری).")
     return CAPTION
 
-@admin_only
 async def collect_news_caption(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = update.message.text or ""
     files = context.user_data.get("files", [])
@@ -113,99 +106,124 @@ async def collect_news_caption(update: Update, context: ContextTypes.DEFAULT_TYP
         media_group = []
         first_sent = False
         for ftype, fid in files:
-            item = None
             if ftype == "photo":
-                item = InputMediaPhoto(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML)
+                media_group.append(InputMediaPhoto(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML))
+                first_sent = True
             elif ftype == "video":
-                item = InputMediaVideo(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML)
+                media_group.append(InputMediaVideo(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML))
+                first_sent = True
             elif ftype == "document":
-                item = InputMediaDocument(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML)
-            if item:
-                media_group.append(item)
+                media_group.append(InputMediaDocument(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML))
                 first_sent = True
         await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
-    elif caption:
-        await context.bot.send_message(
-            chat_id=CHANNEL_ID,
-            text=caption_with_link,
-            parse_mode=ParseMode.HTML,
-            disable_web_page_preview=True
-        )
+    else:
+        if caption:
+            await context.bot.send_message(
+                chat_id=CHANNEL_ID,
+                text=caption_with_link,
+                parse_mode="HTML",
+                disable_web_page_preview=True
+            )
 
     context.user_data.clear()
     await update.message.reply_text("✅ پست خبری ارسال شد!")
     return ConversationHandler.END
 
-# ---------------- پست با پرامپت ----------------
-@admin_only
+# ---------------- پیام تکی و چندتایی ----------------
 async def single(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return await update.message.reply_text("🚫 فقط ادمین می‌تواند پست ارسال کند.")
     context.user_data.clear()
     await update.message.reply_text("💬 لطفاً فایل‌ها را ارسال کن (اختیاری).")
     return FILES
 
-@admin_only
 async def multi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return await update.message.reply_text("🚫 فقط ادمین می‌تواند پست ارسال کند.")
     context.user_data.clear()
-    await update.message.reply_text("📚 فایل‌ها را یکی‌یکی ارسال کن. پس از اتمام، /next را بزن.")
+    await update.message.reply_text("📚 فایل‌ها را یکی‌یکی ارسال کن، بعد از اتمام /next را بزن.")
     return FILES
 
-@admin_only
 async def collect_files(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
     if "files" not in context.user_data:
         context.user_data["files"] = []
     msg = update.message
+
     if msg.photo:
         context.user_data["files"].append(("photo", msg.photo[-1].file_id))
     elif msg.video:
         context.user_data["files"].append(("video", msg.video.file_id))
     elif msg.document:
         context.user_data["files"].append(("document", msg.document.file_id))
-    await update.message.reply_text("✅ فایل ذخیره شد یا /next را بزن.")
+
+    await update.message.reply_text("✅ فایل ذخیره شد یا /next را بزن برای ادامه.")
     return FILES
 
-@admin_only
 async def next_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("📝 حالا متن توضیحی پست را ارسال کن (اختیاری).")
     return CAPTION
 
-@admin_only
 async def collect_caption(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["caption"] = update.message.text or ""
     await update.message.reply_text("🧠 پرامپت را ارسال کن (اختیاری).")
     return PROMPT
 
-@admin_only
 async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["prompt"] = update.message.text or ""
     files = context.user_data.get("files", [])
     caption = context.user_data.get("caption", "")
     prompt = context.user_data.get("prompt", "")
 
+    total_length = len(caption) + len(prompt)
     keyboard = create_prompt_button(prompt)
-    prompt_box = f"<blockquote expandable><pre><code>{html.escape(prompt)}</code></pre></blockquote>" if prompt else ""
+
+    # 🔷 جعبه آبی پرامپت
+    prompt_box = f"""
+<blockquote expandable style="background-color:#d0e7ff;padding:10px;border-radius:5px;">
+<pre><code>{html.escape(prompt)}</code></pre>
+</blockquote>
+""" if prompt else ""
+
     final_caption = f"{caption}\n\n{prompt_box}\n\n🔗 <a href='https://t.me/hamedaf_ir?embed=1'>هوش مصنوعی با حامد افشاری</a>"
 
-    # --- ارسال محتوا ---
-    if files:
-        media_group = []
-        first_sent = False
-        for ftype, fid in files:
-            item = None
-            if ftype == "photo":
-                item = InputMediaPhoto(fid, caption=final_caption if not first_sent else None, parse_mode=ParseMode.HTML)
-            elif ftype == "video":
-                item = InputMediaVideo(fid, caption=final_caption if not first_sent else None, parse_mode=ParseMode.HTML)
-            elif ftype == "document":
-                item = InputMediaDocument(fid, caption=final_caption if not first_sent else None, parse_mode=ParseMode.HTML)
-            if item:
-                media_group.append(item)
+    # 👇 شرط طول کپشن
+    if total_length <= 1024:
+        if files:
+            first_sent = False
+            media_group = []
+            for ftype, fid in files:
+                if ftype == "photo":
+                    media_group.append(InputMediaPhoto(fid, caption=final_caption if not first_sent else None, parse_mode=ParseMode.HTML))
+                elif ftype == "video":
+                    media_group.append(InputMediaVideo(fid, caption=final_caption if not first_sent else None, parse_mode=ParseMode.HTML))
+                elif ftype == "document":
+                    media_group.append(InputMediaDocument(fid, caption=final_caption if not first_sent else None, parse_mode=ParseMode.HTML))
                 first_sent = True
-        await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
 
-        # ✅ دکمه کپی پرامپت را جداگانه بفرست
-        if keyboard:
-            await context.bot.send_message(chat_id=CHANNEL_ID, text="📋 دریافت پرامپت:", reply_markup=keyboard)
+            msg_list = await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
+            if keyboard:
+                await context.bot.edit_message_reply_markup(CHANNEL_ID, msg_list[0].message_id, reply_markup=keyboard)
+        else:
+            await context.bot.send_message(
+                chat_id=CHANNEL_ID,
+                text=final_caption,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+                reply_markup=keyboard
+            )
     else:
+        if files:
+            media_group = []
+            for ftype, fid in files:
+                if ftype == "photo":
+                    media_group.append(InputMediaPhoto(fid))
+                elif ftype == "video":
+                    media_group.append(InputMediaVideo(fid))
+                elif ftype == "document":
+                    media_group.append(InputMediaDocument(fid))
+            await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
         await context.bot.send_message(
             chat_id=CHANNEL_ID,
             text=final_caption,
@@ -218,17 +236,16 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ پست ارسال شد!")
     return ConversationHandler.END
 
-# ---------------- لغو و ریست کامل ----------------
+# ---------------- لغو ----------------
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
-    await update.message.reply_text("❌ عملیات لغو و همه چیز ریست شد. برای شروع دوباره، یک دستور جدید بفرست.")
+    await update.message.reply_text("❌ عملیات لغو شد و ربات ریست شد.")
     return ConversationHandler.END
 
 # ---------------- اجرای اصلی ----------------
 def main():
     app = Application.builder().token(TOKEN).build()
 
-    # --- بخش خبری ---
     news_handler = ConversationHandler(
         entry_points=[CommandHandler("news", news)],
         states={
@@ -241,7 +258,6 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
-    # --- پست با پرامپت ---
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("single", single),

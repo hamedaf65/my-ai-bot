@@ -5,6 +5,7 @@
 import os
 import html
 import logging
+import urllib.parse
 from telegram import (
     Update, InputMediaPhoto, InputMediaVideo, InputMediaDocument,
     InlineKeyboardMarkup, InlineKeyboardButton
@@ -31,7 +32,7 @@ logging.basicConfig(
 def create_prompt_button(prompt_text):
     if not prompt_text:
         return None
-    encoded_prompt = prompt_text.replace(" ", "_").replace("\n", "_")
+    encoded_prompt = urllib.parse.quote(prompt_text)  # ✅ جلوگیری از خطای Button_url_invalid
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📋 کپی پرامپت", url=f"https://t.me/{BOT_USERNAME}?start=prompt_{encoded_prompt}")]
     ])
@@ -40,8 +41,7 @@ def create_prompt_button(prompt_text):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if args and args[0].startswith("prompt_"):
-        prompt_text = args[0][len("prompt_"):]
-        prompt_text = prompt_text.replace("_", " ")
+        prompt_text = urllib.parse.unquote(args[0][len("prompt_"):])  # ✅ بازگردانی پرامپت رمزگذاری‌شده
         await update.message.reply_text(
             f"🧠 <b>پرامپت آماده:</b>\n\n<code>{html.escape(prompt_text)}</code>\n\n📋 برای کپی، روی متن بالا لمس کن.",
             parse_mode="HTML"

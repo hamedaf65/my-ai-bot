@@ -6,7 +6,7 @@ import os
 import html
 import logging
 from telegram import (
-    Update, InputMediaPhoto, InputMediaVideo, InputFile
+    Update, InputMediaPhoto, InputMediaVideo, InputMediaDocument
 )
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -18,7 +18,6 @@ TOKEN = os.getenv("TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 CHANNEL_ID = os.getenv("CHANNEL_ID")  # آیدی کانال به صورت عددی
 
-# وضعیت‌های گفتگو
 FILES, CAPTION, PROMPT = range(3)
 
 logging.basicConfig(
@@ -69,22 +68,30 @@ async def collect_news_caption(update: Update, context: ContextTypes.DEFAULT_TYP
     files = context.user_data.get("files", [])
     caption = context.user_data.get("caption", "")
 
+    # ✅ افزودن کد تبلیغی بدون نمایش تصویر کانال
+    caption_with_link = f"{caption}\n\n🔗 <a href='https://t.me/hamedaf_ir?embed=1'>هوش مصنوعی با حامد افشاری</a>"
+
     if files:
         media_group = []
+        first_sent = False
         for ftype, fid in files:
             if ftype == "photo":
-                media_group.append(InputMediaPhoto(fid, caption=caption if ftype=="photo" else None))
+                media_group.append(InputMediaPhoto(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML))
+                first_sent = True
             elif ftype == "video":
-                media_group.append(InputMediaVideo(fid, caption=caption if ftype=="video" else None))
+                media_group.append(InputMediaVideo(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML))
+                first_sent = True
             elif ftype == "document":
-                media_group.append(InputMediaPhoto(fid))  # fallback برای سند
+                media_group.append(InputMediaDocument(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML))
+                first_sent = True
         await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
     else:
         if caption:
             await context.bot.send_message(
                 chat_id=CHANNEL_ID,
-                text=f"{caption}\n\n🔗 <a href='https://t.me/hamedaf_ir'>هوش مصنوعی با حامد افشاری</a>",
-                parse_mode=ParseMode.HTML
+                text=caption_with_link,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True  # 🚫 جلوگیری از نمایش تصویر کانال
             )
 
     context.user_data.clear()
@@ -132,16 +139,18 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = context.user_data.get("prompt", "")
 
     total_length = len(caption) + len(prompt)
+
+    # ✅ قالب پرامپت قابل انتخاب آسان برای کپی
     prompt_box = f"""
 <blockquote expandable style="background-color:#d0e7ff;padding:10px;border-radius:5px;">
 <pre><code>{html.escape(prompt)}</code></pre>
 </blockquote>
 """ if prompt else ""
 
-    final_caption = f"{caption}\n\n{prompt_box}\n\n🔗 <a href='https://t.me/hamedaf_ir'>هوش مصنوعی با حامد افشاری</a>"
+    # ✅ تبلیغ با غیرفعال بودن پیش‌نمایش
+    final_caption = f"{caption}\n\n{prompt_box}\n\n🔗 <a href='https://t.me/hamedaf_ir?embed=1'>هوش مصنوعی با حامد افشاری</a>"
 
-    # ✅ بررسی محدودیت استاندارد ۱۰۲۴ کاراکتر کپشن تلگرام
-    if total_length <= 1024:  # کوتاه → در کپشن فایل قرار بگیرد
+    if total_length <= 1024:  # کپشن کوتاه
         if files:
             first_sent = False
             media_group = []
@@ -157,8 +166,13 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     first_sent = True
             await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
         else:
-            await context.bot.send_message(chat_id=CHANNEL_ID, text=final_caption, parse_mode=ParseMode.HTML)
-    else:  # طولانی → فایل جدا، متن جدا
+            await context.bot.send_message(
+                chat_id=CHANNEL_ID,
+                text=final_caption,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True  # 🚫 جلوگیری از تصویر کانال
+            )
+    else:  # کپشن طولانی
         if files:
             media_group = []
             for ftype, fid in files:
@@ -169,8 +183,14 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 elif ftype == "document":
                     media_group.append(InputMediaDocument(fid))
             await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
+
         if caption or prompt:
-            await context.bot.send_message(chat_id=CHANNEL_ID, text=final_caption, parse_mode=ParseMode.HTML)
+            await context.bot.send_message(
+                chat_id=CHANNEL_ID,
+                text=final_caption,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True  # 🚫 جلوگیری از نمایش تصویر کانال
+            )
 
     context.user_data.clear()
     await update.message.reply_text("✅ پست ارسال شد!")
@@ -188,7 +208,6 @@ def main():
 
     conv_handler = ConversationHandler(
         entry_points=[
-            CommandHandler("news", news),
             CommandHandler("single", single),
             CommandHandler("multi", multi)
         ],
@@ -203,7 +222,7 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
-    # پست خبری بدون مرحله پرامپت
+    # ✅ پست خبری بدون مرحله پرامپت و با لینک تبلیغی بدون پیش‌نمایش
     news_handler = ConversationHandler(
         entry_points=[CommandHandler("news", news)],
         states={

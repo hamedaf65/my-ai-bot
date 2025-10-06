@@ -1,7 +1,7 @@
 # bot.py
 # نسخه ویژه برای حامد افشاری ❤️
 # ربات مدیریت پست تلگرام با پشتیبانی فایل‌های مختلف و پرامپت هوشمند + دکمه 📋 کپی پرامپت
-# نسخه‌ی Markdown با نمایش پرامپت در code block (```...```)
+# نسخه‌ی نهایی با نمایش پرامپت در قالب Markdown (سه backtick)
 
 import os
 import html
@@ -100,20 +100,20 @@ async def collect_news_caption(update: Update, context: ContextTypes.DEFAULT_TYP
     caption = update.message.text or ""
     files = context.user_data.get("files", [])
 
-    caption_with_link = f"{caption}\n\n🔗 [هوش مصنوعی با حامد افشاری](https://t.me/hamedaf_ir)"
+    caption_with_link = f"{caption}\n\n🔗 <a href='https://t.me/hamedaf_ir?embed=1'>هوش مصنوعی با حامد افشاری</a>"
 
     if files:
         media_group = []
         first_sent = False
         for ftype, fid in files:
             if ftype == "photo":
-                media_group.append(InputMediaPhoto(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.MARKDOWN_V2))
+                media_group.append(InputMediaPhoto(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML))
                 first_sent = True
             elif ftype == "video":
-                media_group.append(InputMediaVideo(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.MARKDOWN_V2))
+                media_group.append(InputMediaVideo(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML))
                 first_sent = True
             elif ftype == "document":
-                media_group.append(InputMediaDocument(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.MARKDOWN_V2))
+                media_group.append(InputMediaDocument(fid, caption=caption_with_link if not first_sent else None, parse_mode=ParseMode.HTML))
                 first_sent = True
         await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
     else:
@@ -121,7 +121,7 @@ async def collect_news_caption(update: Update, context: ContextTypes.DEFAULT_TYP
             await context.bot.send_message(
                 chat_id=CHANNEL_ID,
                 text=caption_with_link,
-                parse_mode=ParseMode.MARKDOWN_V2,
+                parse_mode="HTML",
                 disable_web_page_preview=True
             )
 
@@ -179,8 +179,11 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_length = len(caption) + len(prompt)
     keyboard = create_prompt_button(prompt)
 
-    # 🔷 پرامپت در قالب Markdown code block
-    prompt_box = "```" + prompt + "```" if prompt else ""
+    # 🔷 نمایش پرامپت با Markdown و سه backtick
+    if prompt:
+        prompt_box = "```" + prompt + "```"
+    else:
+        prompt_box = ""
 
     final_caption = f"{caption}\n\n{prompt_box}\n\n🔗 [هوش مصنوعی با حامد افشاری](https://t.me/hamedaf_ir)"
 
@@ -191,11 +194,11 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             media_group = []
             for ftype, fid in files:
                 if ftype == "photo":
-                    media_group.append(InputMediaPhoto(fid, caption=final_caption if not first_sent else None, parse_mode=ParseMode.MARKDOWN_V2))
+                    media_group.append(InputMediaPhoto(fid, caption=final_caption if not first_sent else None, parse_mode=ParseMode.MARKDOWN))
                 elif ftype == "video":
-                    media_group.append(InputMediaVideo(fid, caption=final_caption if not first_sent else None, parse_mode=ParseMode.MARKDOWN_V2))
+                    media_group.append(InputMediaVideo(fid, caption=final_caption if not first_sent else None, parse_mode=ParseMode.MARKDOWN))
                 elif ftype == "document":
-                    media_group.append(InputMediaDocument(fid, caption=final_caption if not first_sent else None, parse_mode=ParseMode.MARKDOWN_V2))
+                    media_group.append(InputMediaDocument(fid, caption=final_caption if not first_sent else None, parse_mode=ParseMode.MARKDOWN))
                 first_sent = True
 
             msg_list = await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
@@ -205,7 +208,7 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=CHANNEL_ID,
                 text=final_caption,
-                parse_mode=ParseMode.MARKDOWN_V2,
+                parse_mode="Markdown",
                 disable_web_page_preview=True,
                 reply_markup=keyboard
             )
@@ -223,7 +226,7 @@ async def collect_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=CHANNEL_ID,
             text=final_caption,
-            parse_mode=ParseMode.MARKDOWN_V2,
+            parse_mode="Markdown",
             disable_web_page_preview=True,
             reply_markup=keyboard
         )
@@ -264,3 +267,19 @@ def main():
                 CommandHandler("next", next_step),
                 MessageHandler(filters.ALL & ~filters.COMMAND, collect_files)
             ],
+            CAPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_caption)],
+            PROMPT: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_prompt)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("cancel", cancel))
+    app.add_handler(news_handler)
+    app.add_handler(conv_handler)
+
+    print("🤖 Bot is running... (Press CTRL+C to stop)")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()

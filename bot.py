@@ -138,19 +138,59 @@ async def collect_single_prompt(update: Update, context: ContextTypes.DEFAULT_TY
     file_data = context.user_data.get("file")
     prompt = update.message.text or ""
 
-    prompt_block = f"```{prompt}```"
+    # جلوگیری از خطای markdown با escape
+    safe_prompt = prompt.replace("```", "` ` `")
+    prompt_block = f"```{safe_prompt}```"
     final_text = f"{caption}\n\n{prompt_block}\n\n🔗 هوش مصنوعی با [حامد افشاری](https://t.me/hamedaf_ir)"
 
-    if file_data:
-        ftype, fid = file_data
-        if ftype == "photo":
-            await context.bot.send_photo(CHANNEL_ID, fid, caption=final_text, parse_mode="Markdown", disable_web_page_preview=True)
-        elif ftype == "video":
-            await context.bot.send_video(CHANNEL_ID, fid, caption=final_text, parse_mode="Markdown", disable_web_page_preview=True)
-        elif ftype == "document":
-            await context.bot.send_document(CHANNEL_ID, fid, caption=final_text, parse_mode="Markdown", disable_web_page_preview=True)
-    else:
-        await context.bot.send_message(CHANNEL_ID, text=final_text, parse_mode="Markdown", disable_web_page_preview=True)
+    try:
+        if file_data:
+            ftype, fid = file_data
+            if ftype == "photo":
+                await context.bot.send_photo(
+                    chat_id=CHANNEL_ID,
+                    photo=fid,
+                    caption=final_text,
+                    parse_mode="Markdown",
+                    disable_web_page_preview=True
+                )
+            elif ftype == "video":
+                await context.bot.send_video(
+                    chat_id=CHANNEL_ID,
+                    video=fid,
+                    caption=final_text,
+                    parse_mode="Markdown",
+                    disable_web_page_preview=True
+                )
+            elif ftype == "document":
+                await context.bot.send_document(
+                    chat_id=CHANNEL_ID,
+                    document=fid,
+                    caption=final_text,
+                    parse_mode="Markdown",
+                    disable_web_page_preview=True
+                )
+        else:
+            await context.bot.send_message(
+                chat_id=CHANNEL_ID,
+                text=final_text,
+                parse_mode="Markdown",
+                disable_web_page_preview=True
+            )
+    except Exception as e:
+        logging.warning(f"Markdown error: {e}")
+        # fallback بدون markdown
+        safe_text = f"{caption}\n\n{prompt}\n\n🔗 هوش مصنوعی با حامد افشاری 👉 https://t.me/hamedaf_ir"
+        if file_data:
+            ftype, fid = file_data
+            if ftype == "photo":
+                await context.bot.send_photo(CHANNEL_ID, fid, caption=safe_text)
+            elif ftype == "video":
+                await context.bot.send_video(CHANNEL_ID, fid, caption=safe_text)
+            elif ftype == "document":
+                await context.bot.send_document(CHANNEL_ID, fid, caption=safe_text)
+        else:
+            await context.bot.send_message(CHANNEL_ID, text=safe_text)
 
     context.user_data.clear()
     await update.message.reply_text("✅ پست ارسال شد!")

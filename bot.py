@@ -125,6 +125,7 @@ async def collect_single_files(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data["file"] = ("document", msg.document.file_id)
     else:
         context.user_data["file"] = None
+
     await update.message.reply_text("📝 لطفاً توضیح پست را بفرست.")
     return CAPTION
 
@@ -137,20 +138,21 @@ async def collect_single_prompt(update: Update, context: ContextTypes.DEFAULT_TY
     caption = context.user_data.get("caption", "")
     file_data = context.user_data.get("file")
     prompt = update.message.text or ""
+    total_length = len(caption) + len(prompt)
 
-    # جلوگیری از خطای markdown با escape
-    safe_prompt = prompt.replace("```", "` ` `")
-    prompt_block = f"```{safe_prompt}```"
-    final_text = f"{caption}\n\n{prompt_block}\n\n🔗 هوش مصنوعی با [حامد افشاری](https://t.me/hamedaf_ir)"
+    # قالب Markdown با Copy Code تلگرام
+    prompt_block = f"```{prompt}```"
+    full_text = f"{caption}\n\n{prompt_block}\n\n🔗 هوش مصنوعی با [حامد افشاری](https://t.me/hamedaf_ir)"
 
     try:
-        if file_data:
+        if total_length <= 1024 and file_data:
+            # کپشن کوتاه → همه در یک پیام
             ftype, fid = file_data
             if ftype == "photo":
                 await context.bot.send_photo(
                     chat_id=CHANNEL_ID,
                     photo=fid,
-                    caption=final_text,
+                    caption=full_text,
                     parse_mode="Markdown",
                     disable_web_page_preview=True
                 )
@@ -158,7 +160,7 @@ async def collect_single_prompt(update: Update, context: ContextTypes.DEFAULT_TY
                 await context.bot.send_video(
                     chat_id=CHANNEL_ID,
                     video=fid,
-                    caption=final_text,
+                    caption=full_text,
                     parse_mode="Markdown",
                     disable_web_page_preview=True
                 )
@@ -166,20 +168,31 @@ async def collect_single_prompt(update: Update, context: ContextTypes.DEFAULT_TY
                 await context.bot.send_document(
                     chat_id=CHANNEL_ID,
                     document=fid,
-                    caption=final_text,
+                    caption=full_text,
                     parse_mode="Markdown",
                     disable_web_page_preview=True
                 )
         else:
+            # متن بلند → فایل جدا، متن جدا
+            if file_data:
+                ftype, fid = file_data
+                if ftype == "photo":
+                    await context.bot.send_photo(chat_id=CHANNEL_ID, photo=fid)
+                elif ftype == "video":
+                    await context.bot.send_video(chat_id=CHANNEL_ID, video=fid)
+                elif ftype == "document":
+                    await context.bot.send_document(chat_id=CHANNEL_ID, document=fid)
+
             await context.bot.send_message(
                 chat_id=CHANNEL_ID,
-                text=final_text,
+                text=full_text,
                 parse_mode="Markdown",
                 disable_web_page_preview=True
             )
+
     except Exception as e:
-        logging.warning(f"Markdown error: {e}")
-        # fallback بدون markdown
+        logging.warning(f"⚠️ Markdown Error: {e}")
+        # نسخهٔ fallback بدون Markdown
         safe_text = f"{caption}\n\n{prompt}\n\n🔗 هوش مصنوعی با حامد افشاری 👉 https://t.me/hamedaf_ir"
         if file_data:
             ftype, fid = file_data
@@ -193,7 +206,7 @@ async def collect_single_prompt(update: Update, context: ContextTypes.DEFAULT_TY
             await context.bot.send_message(CHANNEL_ID, text=safe_text)
 
     context.user_data.clear()
-    await update.message.reply_text("✅ پست ارسال شد!")
+    await update.message.reply_text("✅ پست تکی منتشر شد!")
     return ConversationHandler.END
 
 # ---------------- پست چندتایی با چند پرامپت ----------------

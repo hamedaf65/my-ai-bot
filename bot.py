@@ -189,11 +189,11 @@ async def publish_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 first_sent = True
             await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
         else:
-            await context.bot.send_message(chat_id=CHANNEL_ID, text=final_caption, parse_mode="Markdown")
+            await context.bot.send_message(chat_id=CHANNEL_ID, text=final_caption, parse_mode="Markdown", disable_web_page_preview=True )
     else:
         if files:
             await context.bot.send_media_group(chat_id=CHANNEL_ID, media=[InputMediaPhoto(fid) for _, fid in files])
-        await context.bot.send_message(chat_id=CHANNEL_ID, text=final_caption, parse_mode="Markdown")
+        await context.bot.send_message(chat_id=CHANNEL_ID, text=final_caption, parse_mode="Markdown", disable_web_page_preview=True )
 
     context.user_data.clear()
     await update.message.reply_text("✅ پست نهایی ارسال شد!")

@@ -87,7 +87,7 @@ async def collect_news_caption(update: Update, context: ContextTypes.DEFAULT_TYP
     caption = update.message.text or ""
     files = context.user_data.get("files", [])
 
-    caption_with_link = f"{caption}\n\n🔗 [هوش مصنوعی با حامد افشاری](https://t.me/hamedaf_ir\n📸 [صفحه اینستاگرام](https://www.instagram.com/hamedafshar.ir?igsh=MTA1cmR5eTZjdjRxYQ==)\n💬 [ارتباط با من](https://t.me/hamedafshari_ir))"
+    caption_with_link = f"{caption}\n\n🔗 [هوش مصنوعی با حامد افشاری](https://t.me/hamedaf_ir)\n📸 [صفحه اینستاگرام](https://www.instagram.com/hamedafshar.ir?igsh=MTA1cmR5eTZjdjRxYQ==)\n💬 [ارتباط با من](https://t.me/hamedafshari_ir)"
 
     if files:
         media_group = []

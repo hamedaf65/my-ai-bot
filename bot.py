@@ -172,8 +172,7 @@ async def publish_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompts = context.user_data.get("prompts", [])
 
     # همه پرامپت‌ها با backtick جداگانه
-    all_prompts = "\n\n".join(prompts)
-prompt_text = f"<pre>{html.escape(all_prompts)}</pre>"
+    prompt_text = "\n\n".join([f"```\n{p}```" for p in prompts])
     final_caption = f"{caption}\n\n{prompt_text}\n\n🤖 هوش مصنوعی با حامد افشاری\n🔗 [کانال تلگرام](https://t.me/hamedaf_ir)\n📸 [صفحه اینستاگرام](https://www.instagram.com/hamedafshar.ir?igsh=MTA1cmR5eTZjdjRxYQ==)\n💬 [ارتباط با من](https://t.me/hamedafshari_ir)"
 
     if len(final_caption) <= 1024:

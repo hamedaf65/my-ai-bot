@@ -172,7 +172,8 @@ async def publish_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompts = context.user_data.get("prompts", [])
 
     # همه پرامپت‌ها با backtick جداگانه
-    prompt_text = "\n\n".join([f"```{p}```" for p in prompts])
+    all_prompts = "\n\n".join(prompts)
+prompt_text = f"<pre>{html.escape(all_prompts)}</pre>"
     final_caption = f"{caption}\n\n{prompt_text}\n\n🤖 هوش مصنوعی با حامد افشاری\n🔗 [کانال تلگرام](https://t.me/hamedaf_ir)\n📸 [صفحه اینستاگرام](https://www.instagram.com/hamedafshar.ir?igsh=MTA1cmR5eTZjdjRxYQ==)\n💬 [ارتباط با من](https://t.me/hamedafshari_ir)"
 
     if len(final_caption) <= 1024:
@@ -189,11 +190,11 @@ async def publish_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 first_sent = True
             await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media_group)
         else:
-            await context.bot.send_message(chat_id=CHANNEL_ID, text=final_caption, parse_mode="Markdown", disable_web_page_preview=True )
+            (chat_id=CHANNEL_ID, text=final_caption, parse_mode="Markdown", disable_web_page_preview=True )
     else:
         if files:
             await context.bot.send_media_group(chat_id=CHANNEL_ID, media=[InputMediaPhoto(fid) for _, fid in files])
-        await context.bot.send_message(chat_id=CHANNEL_ID, text=final_caption, parse_mode="Markdown", disable_web_page_preview=True )
+       await context.bot.send_message(chat_id=CHANNEL_ID, text=final_caption, parse_mode="HTML", disable_web_page_preview=True)
 
     context.user_data.clear()
     await update.message.reply_text("✅ پست نهایی ارسال شد!")

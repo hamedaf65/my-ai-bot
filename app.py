@@ -1,25 +1,27 @@
-# app.py
 import os
 from flask import Flask, request
 from telegram import Update
-from telegram.ext import Application
-import asyncio
+from bot import get_app  # استفاده از همان get_app در bot.py
 
 app = Flask(__name__)
+bot_app = get_app()
 
 TOKEN = os.getenv("TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
-CHANNEL_ID = os.getenv("CHANNEL_ID")
-
-bot_app = Application.builder().token(TOKEN).build()
+WEBHOOK_PATH = f"/{TOKEN}"
+BASE_URL = os.getenv("VERCEL_URL", "https://yourappname.vercel.app")
+WEBHOOK_URL = f"https://{BASE_URL}{WEBHOOK_PATH}"
 
 @app.route("/", methods=["GET"])
 def home():
-    return "🤖 Telegram bot is live on Vercel!"
+    return "🤖 Telegram Bot is running on Vercel!"
 
-@app.route(f"/{TOKEN}", methods=["POST"])
+@app.route(WEBHOOK_PATH, methods=["POST"])
 def webhook():
-    update = request.get_json(force=True)
-    update_obj = Update.de_json(update, bot_app.bot)
-    asyncio.run(bot_app.process_update(update_obj))
-    return "ok", 200
+    update = Update.de_json(request.get_json(force=True), bot_app.bot)
+    bot_app.update_queue.put(update)
+    return "OK", 200
+
+# ست کردن webhook فقط وقتی locally یا از CLI اجرا می‌کنیم
+if __name__ == "__main__":
+    bot_app.bot.set_webhook(url=WEBHOOK_URL)
+    print(f"Webhook set to {WEBHOOK_URL}")

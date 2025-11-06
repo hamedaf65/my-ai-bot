@@ -241,5 +241,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-def get_app():
-    return Application.builder().token(TOKEN).build()

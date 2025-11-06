@@ -1,35 +1,25 @@
 # app.py
-# سرور ساده برای webhook ربات تلگرام
-
 import os
 from flask import Flask, request
-from bot import get_app
+from telegram import Update
+from telegram.ext import Application
+import asyncio
 
 app = Flask(__name__)
-bot_app = get_app()
 
 TOKEN = os.getenv("TOKEN")
-WEBHOOK_PATH = f"/{TOKEN}"
-BASE_URL = os.getenv("RENDER_EXTERNAL_URL", "https://yourappname.onrender.com")
-WEBHOOK_URL = f"{BASE_URL}{WEBHOOK_PATH}"
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
+CHANNEL_ID = os.getenv("CHANNEL_ID")
+
+bot_app = Application.builder().token(TOKEN).build()
 
 @app.route("/", methods=["GET"])
 def home():
-    return "🤖 Telegram Bot is running!"
+    return "🤖 Telegram bot is live on Vercel!"
 
-@app.route(WEBHOOK_PATH, methods=["POST"])
+@app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = request.get_json(force=True)
-    bot_app.update_queue.put(update)
-    return "OK", 200
-
-if __name__ == "__main__":
-    import asyncio
-    from telegram import Update
-
-    async def run():
-        await bot_app.bot.set_webhook(url=WEBHOOK_URL)
-        print(f"Webhook set to: {WEBHOOK_URL}")
-        app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
-
-    asyncio.run(run())
+    update_obj = Update.de_json(update, bot_app.bot)
+    asyncio.run(bot_app.process_update(update_obj))
+    return "ok", 200

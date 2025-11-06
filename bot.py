@@ -237,7 +237,9 @@ def main():
     app.add_handler(conv_handler)
 
     print("🤖 Bot is running... (Press CTRL+C to stop)")
-    app.run_polling()
+   
 
 if __name__ == "__main__":
     main()
+def get_app():
+    return Application.builder().token(TOKEN).build()

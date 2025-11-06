@@ -237,7 +237,41 @@ def main():
     app.add_handler(conv_handler)
 
     print("🤖 Bot is running... (Press CTRL+C to stop)")
-   
+
+def get_app():
+    # ساخت Application با تمام handlerها (بدون run_polling)
+    app = Application.builder().token(TOKEN).build()
+
+    # اضافه کردن handlerها — همان کاری که در main() انجام می‌دادی:
+    news_handler = ConversationHandler(
+        entry_points=[CommandHandler("news", news)],
+        states={
+            FILES: [CommandHandler("next", news_next), MessageHandler(filters.ALL & ~filters.COMMAND, collect_news_files)],
+            CAPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_news_caption)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("single", single), CommandHandler("multi", multi)],
+        states={
+            FILES: [CommandHandler("next", next_step), MessageHandler(filters.ALL & ~filters.COMMAND, collect_files)],
+            CAPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_caption)],
+            PROMPT: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_prompt)],
+        },
+        fallbacks=[
+            CommandHandler("cancel", cancel),
+            CommandHandler("publish", publish_post),
+        ],
+    )
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("cancel", cancel))
+    app.add_handler(news_handler)
+    app.add_handler(conv_handler)
+
+    return app
+
 
 if __name__ == "__main__":
     main()
